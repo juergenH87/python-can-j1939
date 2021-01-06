@@ -6,11 +6,17 @@ import j1939
 logging.getLogger('j1939').setLevel(logging.DEBUG)
 logging.getLogger('can').setLevel(logging.DEBUG)
 
-def on_message(pgn, data):
+def on_message(priority, pgn, sa, timestamp, data):
     """Receive incoming messages from the bus
 
+    :param int priority:
+        Priority of the message
     :param int pgn:
         Parameter Group Number of the message
+    :param int sa:
+        Source Address of the message
+    :param int timestamp:
+        Timestamp of the message
     :param bytearray data:
         Data of the PDU
     """
@@ -41,4 +47,4 @@ def main():
     ecu.disconnect()
 
 if __name__ == '__main__':
-    main()        
+    main()

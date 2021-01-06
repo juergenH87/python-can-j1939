@@ -68,11 +68,17 @@ class TestECU(unittest.TestCase):
         self.assertSequenceEqual(data, expected_data[2])
         self._inject_messages_into_ecu()
 
-    def _on_message(self, pgn, data):
+    def _on_message(self, priority, pgn, sa, timestamp, data):
         """Feed incoming message to this testcase.
 
+        :param int priority:
+            Priority of the message
         :param int pgn:
             Parameter Group Number of the message
+        :param sa:
+            Source Address of the message
+        :param timestamp:
+            Timestamp of the message
         :param bytearray data:
             Data of the PDU
         """

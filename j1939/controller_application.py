@@ -192,7 +192,12 @@ class ControllerApplication(object):
         
         mid = j1939.MessageId(priority=priority, parameter_group_number=parameter_group_number, source_address=self._device_address)
         self._ecu.send_message(mid.can_id, data)
+
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data):
+        if self.state != ControllerApplication.State.NORMAL:
+            raise RuntimeError("Could not send message unless address claiming has finished")
         
+        self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address_preferred, data) 
 
     def _send_address_claimed(self, address):
         # TODO: Normally the (initial) address claimed message must not be an auto repeat message.
@@ -203,11 +208,17 @@ class ControllerApplication(object):
         data = self._name.bytes
         self._ecu.send_message(mid.can_id, data)
 
-    def on_message(self, pgn, data):
+    def on_message(self, priority, pgn, sa, timestamp, data):
         """Callback for incoming message
 
+        :param int priority:
+            Priority of the message
         :param int pgn:
             Parameter Group Number of the message
+        :param sa:
+            Source Address of the message
+        :param timestamp:
+            Timestamp of the message
         :param bytearray data:
             Data of the PDU
         """

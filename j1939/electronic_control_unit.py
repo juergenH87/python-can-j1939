@@ -49,7 +49,7 @@ class ElectronicControlUnit(object):
         SENDING_IN_CTS = 1     # sending packages (temporary state)
         SENDING_BM = 2         # sending broadcast packages
 
-    def __init__(self, bus=None):
+    def __init__(self, bus=None, max_cmdt_packets=1):
         """
         :param can.BusABC bus:
             A python-can bus instance to re-use.
@@ -58,6 +58,9 @@ class ElectronicControlUnit(object):
         self._bus = bus
         # Locking object for send 
         self._send_lock = threading.Lock()
+
+        # number of packets that can be sent/received with CMDT (Connection Mode Data Transfer)
+        self._max_cmdt_packets = max_cmdt_packets
 
         #: Includes at least MessageListener.
         self._listeners = [MessageListener(self)]
@@ -330,13 +333,15 @@ class ElectronicControlUnit(object):
                     "pgn": pgn,
                     "message_size": message_size,
                     "num_packages": num_packages,
-                    "next_packet": 1,
+                    "next_packet": min(self._max_cmdt_packets, num_packages),
+                    "max_cmdt_packages": self._max_cmdt_packets, 
                     "data": [],
                     "deadline": time.time() + ElectronicControlUnit.Timeout.T2,
                     'src_address' : src_address,
                     'dest_address' : dest_address,
                 }
-            self.send_tp_cts(dest_address, src_address, 1, 1, pgn)
+
+            self.send_tp_cts(dest_address, src_address, self._rcv_buffer[buffer_hash]["next_packet"], 1, pgn)
             self._job_thread_wakeup()
         elif control_byte == ElectronicControlUnit.ConnectionMode.CTS:
             num_packages = data[1]
@@ -390,14 +395,16 @@ class ElectronicControlUnit(object):
                 # TODO: should we deliver the partly received message to our CAs?
                 del self._rcv_buffer[buffer_hash]
                 self._job_thread_wakeup()
-            # init new buffer for this connection                
+
+            # init new buffer for this connection
             self._rcv_buffer[buffer_hash] = {
                     "pgn": pgn,
                     "message_size": message_size,
                     "num_packages": num_packages,
                     "next_packet": 1,
+                    "max_cmdt_packages": self._max_cmdt_packets,
                     "data": [],
-                    "deadline": timestamp + ElectronicControlUnit.Timeout.T1,
+                    "deadline": time.time() + ElectronicControlUnit.Timeout.T1,
                     'src_address' : src_address,
                     'dest_address' : dest_address,
                 }
@@ -418,22 +425,10 @@ class ElectronicControlUnit(object):
             # TODO: LOG/TRACE/EXCEPTION?
             return
 
-        if sequence_number != self._rcv_buffer[buffer_hash]['next_packet']:
-            if dest_address == j1939.ParameterGroupNumber.Address.GLOBAL:
-                # TODO: 
-                return
-            self.send_tp_cts(dest_address, src_address, 1, self._rcv_buffer[buffer_hash]['next_packet'], self._rcv_buffer[buffer_hash]['pgn'])
-            self._rcv_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T2
-            self._job_thread_wakeup()
-            return
-        
-        self._rcv_buffer[buffer_hash]['next_packet'] += 1
-        self._rcv_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T1
-        self._job_thread_wakeup()
-        
+        # get data
         self._rcv_buffer[buffer_hash]['data'].extend(data[1:])
 
-        # TODO: should we check the number of received messages instead?
+        # message is complete with sending an acknowledge
         if len(self._rcv_buffer[buffer_hash]['data']) >= self._rcv_buffer[buffer_hash]['message_size']:
             logger.info("finished RCV of PGN {} with size {}".format(self._rcv_buffer[buffer_hash]['pgn'], self._rcv_buffer[buffer_hash]['message_size']))
             # shorten data to message_size
@@ -441,15 +436,30 @@ class ElectronicControlUnit(object):
             # finished reassembly
             if dest_address != j1939.ParameterGroupNumber.Address.GLOBAL:
                 self.send_tp_eom_ack(dest_address, src_address, self._rcv_buffer[buffer_hash]['message_size'], self._rcv_buffer[buffer_hash]['num_packages'], self._rcv_buffer[buffer_hash]['pgn'])
-            self.notify_subscribers(self._rcv_buffer[buffer_hash]['pgn'], self._rcv_buffer[buffer_hash]['data'])
+            self.notify_subscribers(mid.priority, self._rcv_buffer[buffer_hash]['pgn'], src_address, timestamp, self._rcv_buffer[buffer_hash]['data'])
             del self._rcv_buffer[buffer_hash]
             self._job_thread_wakeup()
             return
-        
-        if dest_address != j1939.ParameterGroupNumber.Address.GLOBAL:
-            self.send_tp_cts(dest_address, src_address, 1, self._rcv_buffer[buffer_hash]['next_packet'], self._rcv_buffer[buffer_hash]['pgn'])
+
+        # clear to send
+        if (dest_address != j1939.ParameterGroupNumber.Address.GLOBAL) and (sequence_number >= self._rcv_buffer[buffer_hash]['next_packet']):
+
+            # send cts
+            number_of_packets_that_can_be_sent = min( self._max_cmdt_packets, 
+                                                      self._rcv_buffer[buffer_hash]['num_packages'] - self._rcv_buffer[buffer_hash]['next_packet'] )                                          
+            next_packet_to_be_sent = self._rcv_buffer[buffer_hash]['next_packet'] + 1 
+            self.send_tp_cts(dest_address, src_address, number_of_packets_that_can_be_sent, next_packet_to_be_sent, self._rcv_buffer[buffer_hash]['pgn'])
+
+            # calculate next packet number at which a CTS is to be sent
+            self._rcv_buffer[buffer_hash]['next_packet'] = min(self._rcv_buffer[buffer_hash]['next_packet'] + self._max_cmdt_packets, 
+                                                               self._rcv_buffer[buffer_hash]['num_packages'])
+
             self._rcv_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T2
             self._job_thread_wakeup()
+            return
+
+        self._rcv_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T1
+        self._job_thread_wakeup()
 
 
     def notify(self, can_id, data, timestamp):
@@ -475,7 +485,7 @@ class ElectronicControlUnit(object):
 
         if pgn.is_pdu2_format:
             # direct broadcast
-            self.notify_subscribers(pgn.value, data)
+            self.notify_subscribers(mid.priority, pgn.value, mid.source_address, timestamp, data)
             return
 
         # peer to peer
@@ -505,22 +515,28 @@ class ElectronicControlUnit(object):
         elif pgn_value == j1939.ParameterGroupNumber.PGN.DATATRANSFER:
             self._process_tp_dt(mid, dest_address, data, timestamp)
         else:
-            self.notify_subscribers(pgn_value, data)
+            self.notify_subscribers(mid.priority, pgn_value, mid.source_address, timestamp, data)
             return
 
 
-    def notify_subscribers(self, pgn, data):
+    def notify_subscribers(self, priority, pgn, sa, timestamp, data):
         """Feed incoming message to subscribers.
 
+        :param int priority:
+            Priority of the message
         :param int pgn:
             Parameter Group Number of the message
+        :param int sa:
+            Source Address of the message
+        :param int timestamp:
+            Timestamp of the CAN message
         :param bytearray data:
             Data of the PDU
         """
         logger.debug("notify subscribers for PGN {}".format(pgn))
         # TODO: we have to filter the dest_address here!
         for callback in self._subscribers:
-            callback(pgn, data)
+            callback(priority, pgn, sa, timestamp, data)
 
     def add_ca(self, **kwargs):
         """Add a ControllerApplication to the ECU.
@@ -551,6 +567,21 @@ class ElectronicControlUnit(object):
         self._cas.append(ca)
         ca.associate_ecu(self)
         return ca
+
+    def remove_ca(self, device_address):
+        """Remove a ControllerApplication from the ECU.
+
+        :param int device_address:
+            A integer representing the device address
+
+        :return:
+            True if the ControllerApplication was successfully removed, otherwise False is returned.
+        """
+        for ca in self._cas:
+            if device_address == ca._device_address_preferred:
+                self._cas.remove(ca)    
+                return True
+        return False
 
     class Acknowledgement(object):
         ACK = 0
@@ -631,15 +662,24 @@ class ElectronicControlUnit(object):
             mid = j1939.MessageId(priority=priority, parameter_group_number=pgn.value, source_address=src_address)
             self.send_message(mid.can_id, data)
         else:
+            # if the PF is between 0 and 239, the message is destination dependent when pdu_specific != 255
+            # if the PF is between 240 and 255, the message can only be broadcast
+            if (pdu_specific == j1939.ParameterGroupNumber.Address.GLOBAL) or j1939.ParameterGroupNumber(0, pdu_format, pdu_specific).is_pdu2_format:
+                dest_address = j1939.ParameterGroupNumber.Address.GLOBAL
+            else:
+                dest_address = pdu_specific
+
             # init sequence
-            buffer_hash = self._buffer_hash(src_address, pdu_specific)
+            # known limitation: only one BAM can be sent in parallel to a destination node
+            buffer_hash = self._buffer_hash(src_address, dest_address)
             if buffer_hash in self._snd_buffer:
                 # There is already a sequence active for this pair
                 return False
             message_size = len(data)      
             num_packets = int(message_size / 7) if (message_size % 7 == 0) else int(message_size / 7) + 1
 
-            if pdu_specific == j1939.ParameterGroupNumber.Address.GLOBAL:
+            # if the PF is between 240 and 255, the message can only be broadcast
+            if dest_address == j1939.ParameterGroupNumber.Address.GLOBAL:
                 # send BAM
                 self.send_tp_bam(src_address, priority, pgn.value, message_size, num_packets)
 
@@ -653,12 +693,12 @@ class ElectronicControlUnit(object):
                         "state": ElectronicControlUnit.SendBufferState.SENDING_BM,
                         "deadline": time.time() + ElectronicControlUnit.Timeout.Tb,
                         'src_address' : src_address,
-                        'dest_address' : pdu_specific,
+                        'dest_address' : j1939.ParameterGroupNumber.Address.GLOBAL,
                         'next_packet_to_send' : 0,
                     }
             else:
                 # send RTS/CTS
-                # init new buffer for this connection     
+                # init new buffer for this connection
                 self._snd_buffer[buffer_hash] = {
                         "pgn": pgn.value,
                         "priority": priority,
@@ -688,7 +728,7 @@ class MessageListener(Listener):
         self.ecu = ecu
 
     def on_message_received(self, msg):
-        if msg.is_error_frame or msg.is_remote_frame:
+        if msg.is_error_frame or msg.is_remote_frame or (msg.is_extended_id == False):
             return
 
         try:

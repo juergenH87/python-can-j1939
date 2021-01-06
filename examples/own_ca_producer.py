@@ -32,18 +32,24 @@ class OwnCaToProduceCyclicMessages(j1939.ControllerApplication):
         """
         self._ecu.remove_timer(self.timer_callback)
 
-    def on_message(self, pgn, data):
+    def on_message(self, priority, pgn, sa, timestamp, data):
         """Feed incoming message to this CA.
         (OVERLOADED function)
+        :param int priority:
+            Priority of the message
         :param int pgn:
             Parameter Group Number of the message
+        :param intsa:
+            Source Address of the message
+        :param int timestamp:
+            Timestamp of the message
         :param bytearray data:
             Data of the PDU
         """
         print("PGN {} length {}".format(pgn, len(data)))
 
     def timer_callback(self, cookie):
-        """Callback for sending the IEC1 message
+        """Callback for sending messages
 
         This callback is registered at the ECU timer event mechanism to be 
         executed every 500ms.
@@ -56,24 +62,23 @@ class OwnCaToProduceCyclicMessages(j1939.ControllerApplication):
             # returning true keeps the timer event active
             return True
 
-        pgn = j1939.ParameterGroupNumber(0, 0xFE, 0xF6)
-        data = [
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Particulate Trap Inlet Pressure (SPN 81)
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Boost Pressure (SPN 102)
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Intake Manifold 1 Temperature (SPN 105)
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Air Inlet Pressure (SPN 106)
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Air Filter 1 Differential Pressure (SPN 107)
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_16_ARR[0], # Exhaust Gas Temperature (SPN 173)
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_16_ARR[1],
-            j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Coolant Filter Differential Pressure (SPN 112)
-            ]
+        # create data with 8 bytes
+        data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 8
 
-        # SPN 105, Range -40..+210
-        # (Offset -40)
-        receiverTemperature = 30
-        data[2] = receiverTemperature + 40
+        # sending normal broadcast message
+        self.send_pgn(0, 0xFE, 0xF6, 6, data)
 
-        self.send_message(6, pgn.value, data)
+        # sending normal peer-to-peer message, destintion address is 0x04
+        self.send_pgn(0, 0xD0, 0x04, 6, data)
+
+        # create data with 100 bytes
+        data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 100
+
+        # sending multipacket message with TP-BAM
+        self.send_pgn(0, 0xFE, 0xF6, 6, data)
+
+        # sending multipacket message with TP-CMDT, destination address is 0x05
+        self.send_pgn(0, 0xD0, 0x05, 6, data)
 
         # returning true keeps the timer event active
         return True
@@ -123,4 +128,4 @@ def main():
     ecu.disconnect()
 
 if __name__ == '__main__':
-    main()        
+    main()     

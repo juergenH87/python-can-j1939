@@ -1,23 +1,20 @@
 SAE J1939 for Python
 ====================
 
-|release| |docs| |build|
+|release| |docs|
 
-.. |release| image:: https://img.shields.io/pypi/v/j1939.svg
-   :target: https://pypi.python.org/pypi/j1939/
+.. |release| image:: https://img.shields.io/pypi/v/can-j1939
+   :target: https://pypi.python.org/pypi/can-j1939/
    :alt: Latest Version on PyPi
 
 .. |docs| image:: https://readthedocs.org/projects/j1939/badge/?version=latest
    :target: https://j1939.readthedocs.io/en/latest/
    :alt: Documentation build Status
-                
-.. |build| image:: https://travis-ci.com/benkfra/j1939.svg?branch=master
-   :target: https://travis-ci.com/benkfra/j1939/branches
-   :alt: Travis CI Server for master branch
 
-A new implementation of the CAN SAE J1939 standard for Python.
 
-WARNING: Currently this project is in alpha-state! Some of the features are not completely working! 
+A implementation of the CAN SAE J1939 standard for Python. 
+This implementation was taken from https://github.com/benkfra/j1939, as no
+further development took place.
 
 If you experience a problem or think the stack would not behave properly, do 
 not hesitate to open a ticket or write an email.
@@ -28,12 +25,14 @@ At the time of writing the supported interfaces are
 
 * CAN over Serial
 * CAN over Serial / SLCAN
+* CANalyst-II
 * IXXAT Virtual CAN Interface
 * Kvaser’s CANLIB
 * NEOVI Interface
 * NI-CAN
 * PCAN Basic API
 * Socketcan
+* SYSTEC interface
 * USB2CAN Interface
 * Vector
 * Virtual
@@ -78,25 +77,15 @@ Features
 Installation
 ------------
 
-As soon the package is available in your distro, it's as easy as::
+Install can-j1939 with pip::
 
-    $ pip install j1939
-
-In the meanwhile you can either download the wheel-package and issue the command::
-
-    $ pip install j1939-0.1.0.dev1-py2.py3-none-any.whl
+    $ pip install can-j1939
 
 or do the trick with::
 
-    $ git clone https://github.com/benkfra/j1939.git
+    $ git clone https://github.com/juergenH87/can-j1939.git
     $ cd j1939
     $ pip install .
-
-If you want to be able to change the code while using it, clone it then install it in `develop mode`_::
-
-    $ git clone https://github.com/benkfra/j1939.git
-    $ cd j1939
-    $ pip install -e .
 
 
 Quick start
@@ -114,11 +103,17 @@ To simply receive all passing (public) messages on the bus you can subscribe to 
     logging.getLogger('j1939').setLevel(logging.DEBUG)
     logging.getLogger('can').setLevel(logging.DEBUG)
 
-    def on_message(pgn, data):
+    def on_message(priority, pgn, sa, timestamp, data):
         """Receive incoming messages from the bus
 
+        :param int priority:
+            Priority of the message
         :param int pgn:
             Parameter Group Number of the message
+        :param int sa:
+            Source Address of the message
+        :param int timestamp:
+            Timestamp of the message
         :param bytearray data:
             Data of the PDU
         """
@@ -189,18 +184,24 @@ A more sophisticated example in which the CA class was overloaded to include its
             """
             self._ecu.remove_timer(self.timer_callback)
 
-        def on_message(self, pgn, data):
+        def on_message(self, priority, pgn, sa, timestamp, data):
             """Feed incoming message to this CA.
             (OVERLOADED function)
+            :param int priority:
+                Priority of the message
             :param int pgn:
                 Parameter Group Number of the message
+            :param intsa:
+                Source Address of the message
+            :param int timestamp:
+                Timestamp of the message
             :param bytearray data:
                 Data of the PDU
             """
             print("PGN {} length {}".format(pgn, len(data)))
 
         def timer_callback(self, cookie):
-            """Callback for sending the IEC1 message
+            """Callback for sending messages
 
             This callback is registered at the ECU timer event mechanism to be 
             executed every 500ms.
@@ -213,24 +214,23 @@ A more sophisticated example in which the CA class was overloaded to include its
                 # returning true keeps the timer event active
                 return True
 
-            pgn = j1939.ParameterGroupNumber(0, 0xFE, 0xF6)
-            data = [
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Particulate Trap Inlet Pressure (SPN 81)
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Boost Pressure (SPN 102)
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Intake Manifold 1 Temperature (SPN 105)
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Air Inlet Pressure (SPN 106)
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Air Filter 1 Differential Pressure (SPN 107)
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_16_ARR[0], # Exhaust Gas Temperature (SPN 173)
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_16_ARR[1],
-                j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8, # Coolant Filter Differential Pressure (SPN 112)
-                ]
+            # create data with 8 bytes
+            data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 8
 
-            # SPN 105, Range -40..+210
-            # (Offset -40)
-            receiverTemperature = 30
-            data[2] = receiverTemperature + 40
+            # sending normal broadcast message
+            self.send_pgn(0, 0xFE, 0xF6, 6, data)
 
-            self.send_message(6, pgn.value, data)
+            # sending normal peer-to-peer message, destintion address is 0x04
+            self.send_pgn(0, 0xD0, 0x04, 6, data)
+
+            # create data with 100 bytes
+            data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 100
+
+            # sending multipacket message with TP-BAM
+            self.send_pgn(0, 0xFE, 0xF6, 6, data)
+
+            # sending multipacket message with TP-CMDT, destination address is 0x05
+            self.send_pgn(0, 0xD0, 0x05, 6, data)
 
             # returning true keeps the timer event active
             return True

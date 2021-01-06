@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Extension
 
 exec(open('j1939/version.py').read())
 
@@ -7,12 +7,11 @@ description = open("README.rst").read()
 description = description.replace("/latest/", "/stable/")
 
 setup(
-    name="j1939",
-    url="https://github.com/benkfra/j1939",
+    name="can-j1939",
+    url="https://github.com/juergenH87/python-can-j1939",
     version=__version__,
     packages=find_packages(exclude=['docs', 'examples']),
-    author="Frank Benkert",
-    author_email="opensource@frank-benkert.de",
+    author="Juergen Heilgemeir",
     description="SAE J1939 stack implementation",
     keywords="CAN SAE J1939",
     long_description=description,
@@ -20,15 +19,13 @@ setup(
     license="MIT",
     platforms=["any"],
     classifiers=[
-        "Development Status :: 3 - Alpha",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
-        "Programming Language :: Python :: 2",
         "Programming Language :: Python :: 3",
         "Intended Audience :: Developers",
         "Topic :: Scientific/Engineering"
     ],
-    install_requires=["python-can>=2.0.0"],
+    install_requires=["python-can>=3.0.0"],
     include_package_data=True,
 
     # Tests can be run using `python setup.py test`
