@@ -1,0 +1,62 @@
+j1939 package
+=============
+
+Submodules
+----------
+
+j1939.controller\_application module
+------------------------------------
+
+.. automodule:: j1939.controller_application
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+j1939.electronic\_control\_unit module
+--------------------------------------
+
+.. automodule:: j1939.electronic_control_unit
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+j1939.message\_id module
+------------------------
+
+.. automodule:: j1939.message_id
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+j1939.name module
+-----------------
+
+.. automodule:: j1939.name
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+j1939.parameter\_group\_number module
+-------------------------------------
+
+.. automodule:: j1939.parameter_group_number
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+j1939.version module
+--------------------
+
+.. automodule:: j1939.version
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+
+Module contents
+---------------
+
+.. automodule:: j1939
+    :members:
+    :undoc-members:
+    :show-inheritance:
