@@ -1,7 +1,7 @@
 
 import j1939
 
-class ParameterGroupNumber(object):
+class ParameterGroupNumber:
     """Parameter Group Number (PGN).
     
     The PGN are described in SAE J1939/21 and consists of four parts:
@@ -24,7 +24,7 @@ class ParameterGroupNumber(object):
           have to, how to name the other PGN object?
     """
 
-    class PGN(object):
+    class PGN:
         #TODO:
         REQUEST = 59904               # EA00
         #ACKNOWLEDGEMENT = 59392
@@ -35,7 +35,7 @@ class ParameterGroupNumber(object):
         #PROPRIETARY_A = 61184
         #SOFTWARE_IDENT = 65242
 
-    class Address(object):
+    class Address:
         NULL = 254
         GLOBAL = 255
 
@@ -75,5 +75,3 @@ class ParameterGroupNumber(object):
     def value(self):
         """Returns the value of the PGN"""
         return (self.data_page << 16) | (self.pdu_format << 8) | self.pdu_specific 
-
-            

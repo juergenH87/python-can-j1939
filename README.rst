@@ -12,7 +12,7 @@ SAE J1939 for Python
    :alt: Documentation build Status
 
 
-A implementation of the CAN SAE J1939 standard for Python. 
+An implementation of the CAN SAE J1939 standard for Python. 
 This implementation was taken from https://github.com/benkfra/j1939, as no
 further development took place.
 
@@ -70,7 +70,7 @@ Features
     + Broadcast Announce Message (TP.BAM)
 
 * (under construction) Requests (global and specific)
-* (under construction) correct timeout and deadline handling
+* correct timeout and deadline handling
 * (under construction) almost complete testcoverage
 
 
@@ -294,6 +294,5 @@ Most of the informations about SAE J1939 are taken from the papers and the book 
 
 
 .. _python-can: https://python-can.readthedocs.org/en/stable/
-.. _develop mode: https://packaging.python.org/distributing/#working-in-development-mode
 .. _Copperhill technologies: http://copperhilltech.com/a-brief-introduction-to-the-sae-j1939-protocol/
 .. _CANopen project of Christian Sandberg: http://canopen.readthedocs.io/en/stable/

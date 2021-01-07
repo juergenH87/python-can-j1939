@@ -1,5 +1,5 @@
 
-class MessageId(object):
+class MessageId:
     """The CAN MessageId of an PDU.
     
     The MessageId consists of three parts:

@@ -1,5 +1,5 @@
 
-class Name(object):
+class Name:
     """The Name of one Controller Application.
     
     The Name consists of 64 bit:
@@ -49,7 +49,7 @@ class Name(object):
         manufacturer specific way.
     """
 
-    class IndustryGroup(object):
+    class IndustryGroup:
         Global = 0
         OnHighway = 1
         AgriculturalAndForestry = 2

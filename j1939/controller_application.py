@@ -6,20 +6,20 @@ import j1939
 
 logger = logging.getLogger(__name__)
 
-class ControllerApplication(object):
+class ControllerApplication:
     """ControllerApplication (CA) identified by a Name and an Address."""
 
-    class State(object):
+    class State:
         NONE = 0
         WAIT_VETO = 1
         NORMAL = 2
         CANNOT_CLAIM = 3
 
-    class ClaimTimeout(object):
+    class ClaimTimeout:
         VETO = 0.250
         REQUEST_FOR_CLAIM = 1.250
 
-    class FieldValue(object):
+    class FieldValue:
         # The following values are in "Little Endian First" Byteorder
 
         # indicates, that the parameter is "not available"
@@ -58,8 +58,7 @@ class ControllerApplication(object):
             A j1939 :class:`j1939.ElectronicControlUnit` instance
         """
         self._ecu = ecu
-        self._ecu.subscribe(self.on_message)
-
+        self._ecu.subscribe(self.on_message, self._device_address_preferred)
 
     def remove_ecu(self):
         self._ecu.unsubscribe(self.on_message)

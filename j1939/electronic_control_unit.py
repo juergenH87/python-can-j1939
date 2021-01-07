@@ -15,17 +15,17 @@ import j1939
 
 logger = logging.getLogger(__name__)
 
-class ElectronicControlUnit(object):
+class ElectronicControlUnit:
     """ElectronicControlUnit (ECU) holding one or more ControllerApplications (CAs)."""
 
-    class ConnectionMode(object):
+    class ConnectionMode:
         RTS = 16
         CTS = 17
         EOM_ACK = 19
         BAM = 32
         ABORT = 255
 
-    class ConnectionAbortReason(object):
+    class ConnectionAbortReason:
         BUSY = 1        # Already  in  one  or  more  connection  managed  sessions  and  cannot  support another
         RESOURCES = 2   # System  resources  were  needed  for  another  task  so  this  connection  managed session was terminated
         TIMEOUT = 3     # A timeout occured
@@ -33,7 +33,7 @@ class ElectronicControlUnit(object):
         CTS_WHILE_DT = 4  # according AUTOSAR: CTS messages received when data transfer is in progress
         # 251..255 Per J1939/71 definitions - but there are none?
 
-    class Timeout(object):
+    class Timeout:
         """Timeouts according SAE J1939/21"""
         Tr = 0.200 # Response Time
         Th = 0.500 # Holding Time
@@ -44,7 +44,7 @@ class ElectronicControlUnit(object):
         # timeout for multi packet broadcast messages 50..200ms
         Tb = 0.050
 
-    class SendBufferState(object):
+    class SendBufferState:
         WAITING_CTS = 0        # waiting for CTS
         SENDING_IN_CTS = 1     # sending packages (temporary state)
         SENDING_BM = 2         # sending broadcast packages
@@ -269,14 +269,16 @@ class ElectronicControlUnit(object):
         self._bus.shutdown()
         self._bus = None
 
-    def subscribe(self, callback):
+    def subscribe(self, callback, device_address=None):
         """Add the given callback to the message notification stream.
 
         :param callback:
             Function to call when message is received.
+        :param int device_address:
+            Device address of the application
+            The address which the message is intended
         """
-        self._subscribers.append(callback)
-
+        self._subscribers.append({'cb': callback, 'dev_adr':device_address})
 
     def unsubscribe(self, callback):
         """Stop listening for message.
@@ -284,7 +286,9 @@ class ElectronicControlUnit(object):
         :param callback:
             Function to call when message is received.
         """
-        self._subscribers.remove(callback)
+        for dic in self._subscribers:
+            if dic['cb'] == callback:
+                self._subscribers.remove(dic)
 
     def _buffer_hash(self, src_address, dest_address):
         """Calcluates a hash value for the given address pair
@@ -436,7 +440,7 @@ class ElectronicControlUnit(object):
             # finished reassembly
             if dest_address != j1939.ParameterGroupNumber.Address.GLOBAL:
                 self.send_tp_eom_ack(dest_address, src_address, self._rcv_buffer[buffer_hash]['message_size'], self._rcv_buffer[buffer_hash]['num_packages'], self._rcv_buffer[buffer_hash]['pgn'])
-            self.notify_subscribers(mid.priority, self._rcv_buffer[buffer_hash]['pgn'], src_address, timestamp, self._rcv_buffer[buffer_hash]['data'])
+            self.notify_subscribers(mid.priority, self._rcv_buffer[buffer_hash]['pgn'], src_address, dest_address, timestamp, self._rcv_buffer[buffer_hash]['data'])
             del self._rcv_buffer[buffer_hash]
             self._job_thread_wakeup()
             return
@@ -485,7 +489,7 @@ class ElectronicControlUnit(object):
 
         if pgn.is_pdu2_format:
             # direct broadcast
-            self.notify_subscribers(mid.priority, pgn.value, mid.source_address, timestamp, data)
+            self.notify_subscribers(mid.priority, pgn.value, mid.source_address, j1939.ParameterGroupNumber.Address.GLOBAL, timestamp, data)
             return
 
         # peer to peer
@@ -493,7 +497,7 @@ class ElectronicControlUnit(object):
         pgn_value = pgn.value & 0x1FF00
         dest_address = pgn.pdu_specific # may be Address.GLOBAL
 
-        # TODO: iterate all CAs to check if we have to handle this destination address!
+        # iterate all CAs to check if we have to handle this destination address
         if dest_address != j1939.ParameterGroupNumber.Address.GLOBAL:
             reject = True
             for ca in self._cas:
@@ -515,11 +519,11 @@ class ElectronicControlUnit(object):
         elif pgn_value == j1939.ParameterGroupNumber.PGN.DATATRANSFER:
             self._process_tp_dt(mid, dest_address, data, timestamp)
         else:
-            self.notify_subscribers(mid.priority, pgn_value, mid.source_address, timestamp, data)
+            self.notify_subscribers(mid.priority, pgn_value, mid.source_address, dest_address, timestamp, data)
             return
 
 
-    def notify_subscribers(self, priority, pgn, sa, timestamp, data):
+    def notify_subscribers(self, priority, pgn, sa, dest, timestamp, data):
         """Feed incoming message to subscribers.
 
         :param int priority:
@@ -528,15 +532,19 @@ class ElectronicControlUnit(object):
             Parameter Group Number of the message
         :param int sa:
             Source Address of the message
+        :param int dest:
+            Destination Address of the message
         :param int timestamp:
             Timestamp of the CAN message
         :param bytearray data:
             Data of the PDU
         """
         logger.debug("notify subscribers for PGN {}".format(pgn))
-        # TODO: we have to filter the dest_address here!
-        for callback in self._subscribers:
-            callback(priority, pgn, sa, timestamp, data)
+        # notify only the CA for which the message is intended
+        # each CA receives all broadcast messages
+        for dic in self._subscribers:
+            if (dic['dev_adr'] == None) or (dest == j1939.ParameterGroupNumber.Address.GLOBAL) or (dest == dic['dev_adr']):
+                dic['cb'](priority, pgn, sa, timestamp, data)
 
     def add_ca(self, **kwargs):
         """Add a ControllerApplication to the ECU.
@@ -583,7 +591,7 @@ class ElectronicControlUnit(object):
                 return True
         return False
 
-    class Acknowledgement(object):
+    class Acknowledgement:
         ACK = 0
         NACK = 1
         AccessDenied = 2
