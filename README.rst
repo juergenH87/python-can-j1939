@@ -66,9 +66,9 @@ Features
 * (under construction) Requests (global and specific)
 * correct timeout and deadline handling
 * (under construction) almost complete testcoverage
-* (under construction) diagnostic messages
+* (under construction) diagnostic messages (see https://github.com/juergenH87/python-can-j1939/tree/master/examples/diagnostic_message)
 
-  - DM1 reception support
+  - support of DM1 interpretation
 
 
 Installation
@@ -162,83 +162,91 @@ A more sophisticated example in which the CA class was overloaded to include its
     logging.getLogger('j1939').setLevel(logging.DEBUG)
     logging.getLogger('can').setLevel(logging.DEBUG)
 
-    class OwnCaToProduceCyclicMessages(j1939.ControllerApplication):
-        """CA to produce messages
+    # compose the name descriptor for the new ca
+    name = j1939.Name(
+        arbitrary_address_capable=0, 
+        industry_group=j1939.Name.IndustryGroup.Industrial,
+        vehicle_system_instance=1,
+        vehicle_system=1,
+        function=1,
+        function_instance=1,
+        ecu_instance=1,
+        manufacturer_code=666,
+        identity_number=1234567
+        )
 
-        This CA produces simulated sensor values and cyclically sends them to
-        the bus with the PGN 0xFEF6 (Intake Exhaust Conditions 1).
+    # create the ControllerApplications
+    ca = j1939.ControllerApplication(name, 128)
+
+
+    def ca_receive(priority, pgn, source, timestamp, data):
+        """Feed incoming message to this CA.
+        (OVERLOADED function)
+        :param int priority:
+            Priority of the message
+        :param int pgn:
+            Parameter Group Number of the message
+        :param intsa:
+            Source Address of the message
+        :param int timestamp:
+            Timestamp of the message
+        :param bytearray data:
+            Data of the PDU
         """
+        print("PGN {} length {}".format(pgn, len(data)))
 
-        def __init__(self, name, device_address_preferred=None):
-            # old fashion calling convention for compatibility with Python2
-            j1939.ControllerApplication.__init__(self, name, device_address_preferred)
+    def ca_timer_callback1(cookie):
+        """Callback for sending messages
 
-        def start(self):
-            """Starts the CA
-            (OVERLOADED function)
-            """
-            # add our timer event
-            self._ecu.add_timer(0.500, self.timer_callback)
-            # call the super class function
-            return j1939.ControllerApplication.start(self)
+        This callback is registered at the ECU timer event mechanism to be 
+        executed every 500ms.
 
-        def stop(self):
-            """Stops the CA
-            (OVERLOADED function)
-            """
-            self._ecu.remove_timer(self.timer_callback)
-
-        def on_message(self, priority, pgn, sa, timestamp, data):
-            """Feed incoming message to this CA.
-            (OVERLOADED function)
-            :param int priority:
-                Priority of the message
-            :param int pgn:
-                Parameter Group Number of the message
-            :param intsa:
-                Source Address of the message
-            :param int timestamp:
-                Timestamp of the message
-            :param bytearray data:
-                Data of the PDU
-            """
-            print("PGN {} length {}".format(pgn, len(data)))
-
-        def timer_callback(self, cookie):
-            """Callback for sending messages
-
-            This callback is registered at the ECU timer event mechanism to be 
-            executed every 500ms.
-
-            :param cookie:
-                A cookie registered at 'add_timer'. May be None.
-            """
-            # wait until we have our device_address
-            if self.state != j1939.ControllerApplication.State.NORMAL:
-                # returning true keeps the timer event active
-                return True
-
-            # create data with 8 bytes
-            data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 8
-
-            # sending normal broadcast message
-            self.send_pgn(0, 0xFE, 0xF6, 6, data)
-
-            # sending normal peer-to-peer message, destintion address is 0x04
-            self.send_pgn(0, 0xD0, 0x04, 6, data)
-
-            # create data with 100 bytes
-            data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 100
-
-            # sending multipacket message with TP-BAM
-            self.send_pgn(0, 0xFE, 0xF6, 6, data)
-
-            # sending multipacket message with TP-CMDT, destination address is 0x05
-            self.send_pgn(0, 0xD0, 0x05, 6, data)
-
+        :param cookie:
+            A cookie registered at 'add_timer'. May be None.
+        """
+        # wait until we have our device_address
+        if ca.state != j1939.ControllerApplication.State.NORMAL:
             # returning true keeps the timer event active
             return True
 
+        # create data with 8 bytes
+        data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 8
+
+        # sending normal broadcast message
+        ca.send_pgn(0, 0xFD, 0xED, 6, data)
+
+        # sending normal peer-to-peer message, destintion address is 0x04
+        ca.send_pgn(0, 0xE0, 0x04, 6, data)
+
+        # returning true keeps the timer event active
+        return True
+
+
+    def ca_timer_callback2(cookie):
+        """Callback for sending messages
+
+        This callback is registered at the ECU timer event mechanism to be 
+        executed every 500ms.
+
+        :param cookie:
+            A cookie registered at 'add_timer'. May be None.
+        """
+        # wait until we have our device_address
+        if ca.state != j1939.ControllerApplication.State.NORMAL:
+            # returning true keeps the timer event active
+            return True
+
+        # create data with 100 bytes
+        data = [j1939.ControllerApplication.FieldValue.NOT_AVAILABLE_8] * 100
+
+        # sending multipacket message with TP-BAM
+        ca.send_pgn(0, 0xFE, 0xF6, 6, data)
+
+        # sending multipacket message with TP-CMDT, destination address is 0x05
+        ca.send_pgn(0, 0xD0, 0x05, 6, data)
+
+        # returning true keeps the timer event active
+        return True
 
     def main():
         print("Initializing")
@@ -257,26 +265,16 @@ A more sophisticated example in which the CA class was overloaded to include its
         # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)    
         # ecu.connect('testchannel_1', bustype='virtual')
 
-        # compose the name descriptor for the new ca
-        name = j1939.Name(
-            arbitrary_address_capable=0, 
-            industry_group=j1939.Name.IndustryGroup.Industrial,
-            vehicle_system_instance=1,
-            vehicle_system=1,
-            function=1,
-            function_instance=1,
-            ecu_instance=1,
-            manufacturer_code=666,
-            identity_number=1234567
-            )
-
-        # create derived CA with given NAME and ADDRESS
-        ca = OwnCaToProduceCyclicMessages(name, 128)
         # add CA to the ECU
         ecu.add_ca(controller_application=ca)
+        ca.subscribe(ca_receive)
+        # callback every 0.5s
+        ca.add_timer(0.500, ca_timer_callback1)
+        # callback every 5s
+        ca.add_timer(5, ca_timer_callback2)
         # by starting the CA it starts the address claiming procedure on the bus
         ca.start()
-
+                            
         time.sleep(120)
 
         print("Deinitializing")
@@ -284,7 +282,7 @@ A more sophisticated example in which the CA class was overloaded to include its
         ecu.disconnect()
 
     if __name__ == '__main__':
-        main()        
+        main()  
 
 Credits
 -------
