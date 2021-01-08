@@ -66,7 +66,7 @@ Features
 * (under construction) Requests (global and specific)
 * correct timeout and deadline handling
 * (under construction) almost complete testcoverage
-* (under construction) diagnostic messages (see https://github.com/juergenH87/python-can-j1939/tree/master/examples/diagnostic_message)
+* (under construction) diagnostic messages (see https://github.com/juergenH87/python-can-j1939/tree/master/examples/diagnostic_message.py)
 
   - support of DM1 interpretation
 
