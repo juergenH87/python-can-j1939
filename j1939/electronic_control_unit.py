@@ -277,6 +277,9 @@ class ElectronicControlUnit:
         :param int device_address:
             Device address of the application
             The address which the message is intended
+
+            if device_address is set to None or not entered, each message is received 
+            (except: TP.CMDT is only received if the destination address is bound to a controller application)
         """
         self._subscribers.append({'cb': callback, 'dev_adr':device_address})
 

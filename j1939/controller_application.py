@@ -58,11 +58,44 @@ class ControllerApplication:
             A j1939 :class:`j1939.ElectronicControlUnit` instance
         """
         self._ecu = ecu
-        self._ecu.subscribe(self.on_message, self._device_address_preferred)
 
     def remove_ecu(self):
-        self._ecu.unsubscribe(self.on_message)
+        
         self._ecu = None
+
+    def subscribe(self, callback):
+        """Add the given callback to the message notification stream.
+
+        :param callback:
+            Function to call when message is received.
+        """
+        self._ecu.subscribe(callback, self._device_address_preferred)
+
+    def unsubscribe(self, callback):
+        """Stop listening for message.
+        
+        :param callback:
+            Function to call when message is received.
+        """
+        self._ecu.unsubscribe(callback)
+
+    def add_timer(self, delta_time, callback, cookie=None):
+        """Adds a callback to the list of timer events
+
+        :param delta_time:
+            The time in seconds after which the event is to be triggered.
+        :param callback:
+            The callback function to call
+        """
+        self._ecu.add_timer(delta_time, callback, cookie)
+
+    def remove_timer(self, callback):
+        """Removes ALL entries from the timer event list for the given callback
+
+        :param callback:
+            The callback to be removed from the timer event list
+        """
+        remove_timer(callback)
 
     def start(self):
         """Starts the CA

@@ -58,20 +58,17 @@ Features
 * one ElectronicControlUnit (ECU) can hold multiple ControllerApplications (CA)
 * ECU (CA) Naming according SAE J1939/81
 * (under construction) full featured address claiming procedure according SAE J1939/81
-* full support of transport protocol according SAE J1939/21 for sending and receiveing
+* full support of transport protocol (up to 1785 bytes) according SAE J1939/21 for sending and receiveing
 
-  - Message Packaging and Reassembly (up to 1785 bytes)
-
-    + Transfer Protocol Transfer Data (TP.TD)
-    + Transfer Protocol Communication Management (TP.CM)
-
-  - Multi-Packet Broadcasts
-
-    + Broadcast Announce Message (TP.BAM)
+  - Connection Mode Data Transfers (CMDT)
+  - Broadcast Announce Message (BAM)
 
 * (under construction) Requests (global and specific)
 * correct timeout and deadline handling
 * (under construction) almost complete testcoverage
+* (under construction) diagnostic messages
+
+  - DM1 reception support
 
 
 Installation
@@ -86,6 +83,13 @@ or do the trick with::
     $ git clone https://github.com/juergenH87/can-j1939.git
     $ cd j1939
     $ pip install .
+
+Upgrade
+------------
+
+Upgrade an already installed can-j1939 package: 
+
+    $ pip install --upgrade can-j1939
 
 
 Quick start
