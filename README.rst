@@ -87,7 +87,7 @@ or do the trick with::
 Upgrade
 ------------
 
-Upgrade an already installed can-j1939 package: 
+Upgrade an already installed can-j1939 package::
 
     $ pip install --upgrade can-j1939
 

@@ -21,19 +21,50 @@ def on_message(priority, pgn, sa, timestamp, data):
     :param bytearray data:
         Data of the PDU
     """
+    pass
 
-    # get DM1 message
-    Dm1 = j1939.DiagnosticMessage1(pgn, data)
-    if Dm1 != None:
-        # DM1 lamp status
-        print("\nDM1 received from source", sa, ", number DTC", len(Dm1.dtc_list))
-        print("lamp status", Dm1.lamp_status)
-        spn_fmi = []
-        for dtc in Dm1.dtc_list:
-            # print all DTCs of DM1
-            # a DTC consits of s SPN, FMI and an occurrence counter, only 0 is supported as SPN conversion mode
-            spn_fmi.append({j1939.DTC(dtc).spn, j1939.DTC(dtc).fmi})
-        print("spn/fmi list", spn_fmi)
+
+def dm1_receive(sa, lamp_status, dtc_dic_list, timestamp):
+    """Receive incoming Dm1 messages from the bus
+
+    :param int sa:
+        Source Address of the message
+    :param dic lamp_status:
+        lamp status dictionary
+        keys: 'pl', 'awl', 'rsl', 'mil'
+        value: j1939.DtcLamp.OFF / .ON / .SLOW_FLASH / .ON_FAST_FLASH
+    :param list of dic dtc_dic_list:
+        DTC List
+        keys: 'spn', 'fmi', 'oc'
+    :param int timestamp:
+        Timestamp of the message
+    :param bytearray data:
+        Data of the PDU
+    """
+    print('DM1 received', sa, lamp_status, dtc_list)
+
+
+def dm1_before_send():
+    """This function is called before a Dm1 message is sent to collect the data
+
+    :return:
+        list of dictionaries of all DTCs included in DM1
+
+    :rtype: list of dic: 'spn', 'fmi', 'oc'
+    """
+    lamp_status = {}
+    # get lamp status (optional, if status not enter, lamp is switched off)
+    lamp_status['pl']  = j1939.DtcLamp.ON_FAST_FLASH
+    lamp_status['awl'] = j1939.DtcLamp.ON_SLOW_FLASH
+    lamp_status['rsl'] = j1939.DtcLamp.NA
+    lamp_status['mil'] = j1939.DtcLamp.OFF
+
+    # add all active DTCs
+    dtc_list = []
+    dtc_list.append({'spn': 123, 'fmi': 31})           # occurrence counter is set to 0
+    dtc_list.append({'spn': 456, 'fmi': 1, 'oc': 132}) # with optional occurrence counter
+
+    return lamp_status, dtc_list
 
 
 def main():
@@ -47,13 +78,25 @@ def main():
     # (see https://python-can.readthedocs.io/en/stable/bus.html).
     # ecu.connect(bustype='socketcan', channel='can0')
     # ecu.connect(bustype='kvaser', channel=0, bitrate=250000)
-    ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', bitrate=500000)
+    ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', bitrate=250000)
     # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
     # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
-    # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)    
+    # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)   
 
     # subscribe to all (global) messages on the bus
     ecu.subscribe(on_message)
+
+    
+    # create the instance of the Dm1 to be able to receive active DTCs
+    Dm1_rec = j1939.Dm1(ecu=ecu)
+    # subscribe to DM1-messages on the bus
+    Dm1_rec.subscribe(dm1_receive)
+
+    # create the instance of the Dm1 to be able to send active DTCs
+    Dm1_snd = j1939.Dm1(ecu=ecu)
+    # start sending Dm1-message from source-id 10
+    Dm1_snd.start_send(callback=dm1_before_send, source_address=10)
+
 
     time.sleep(120)
 
