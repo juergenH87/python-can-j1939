@@ -1,4 +1,3 @@
-from os import supports_follow_symlinks
 import j1939
 import logging
 
@@ -13,8 +12,8 @@ class DTC:
             self._dtc = dtc
             self._spn = ((dtc & 0xFFFF) | ((dtc >> 5) & 0x70000))
             self._fmi = ((dtc >> 16) & 0x1F)
-            self._oc = dtc & 0x7f
-            self._cm = (dtc >> 7) & 0x01
+            self._oc  = ((dtc >> 24) & 0x7f)
+            self._cm  = ((dtc >> 31) & 0x01)
             if self._cm != 0:
                 logger.error("DM01: deprecated spn conversion modes are not supported")
         else:
@@ -115,6 +114,7 @@ class DtcLamp:
 
         return data
 
+
 class Dm1:
     """Active Diagnostic Trouble Codes (DM1)
 
@@ -124,17 +124,13 @@ class Dm1:
     Together, the lamp and DTC information convey the diagnostic condition 
     of the transmitting electronic component to other components on the network. 
     Occurrence counts may be provided. 
-
-    :param receive_data:
-        j1939 pdu payload
     """
-
     _msg_subscriber_added = False
 
     def __init__(self, ecu: j1939.ElectronicControlUnit):
         """
-        :param data:
-            PDU payload of normal (<= 8 Byte) or transport protocol message
+        :param ecu:
+            ecu instance
         """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM01
         self._lamp_status = {}
@@ -163,9 +159,24 @@ class Dm1:
         """
         self._subscribers.remove(callback) 
 
-    def start_send(self, callback, source_address, cycletime=1, priority=6):
-        cookie = {'cb': callback, 'sa': source_address, 'prio': priority}
+    def start_send(self, callback, sa, cycletime=1, priority=6):
+        """Start cyclic sending of Dm1 message
+        
+        :param callback:
+            Function to call before Dm1 message is sent
+        :param int sa:
+            Source address of Dm1 message  
+        :param int cycletime:
+            Optional send cycletime
+            cycletime is 1s if not specified
+        :param int priority:
+            priority of Dm1 message   
+        """
+        cookie = {'cb': callback, 'sa': sa, 'prio': priority}
         self._ecu.add_timer(delta_time=cycletime, callback=self._send, cookie=cookie)
+
+    def stop_send(self, callback):
+        self._ecu.remove_timer(callback)
 
     @property
     def dtc_dic_list(self):
@@ -248,10 +259,10 @@ class Dm1:
         number_dtc = int(dtc_length / 4)
 
         # get lamp status
-        self._lamp_status['pl']  = DtcLamp.get_lamp_status( self._data[0] & 0x03,        self._data[1] & 0x03)
-        self._lamp_status['awl'] = DtcLamp.get_lamp_status((self._data[0] >> 1) & 0x03, (self._data[1] >> 1) & 0x03)
-        self._lamp_status['rsl'] = DtcLamp.get_lamp_status((self._data[0] >> 2) & 0x03, (self._data[1] >> 2) & 0x03)
-        self._lamp_status['mil'] = DtcLamp.get_lamp_status((self._data[0] >> 3) & 0x03, (self._data[1] >> 3) & 0x03)
+        self._lamp_status['pl']  = DtcLamp().get_status( self._data[0] & 0x03,        self._data[1] & 0x03)
+        self._lamp_status['awl'] = DtcLamp().get_status((self._data[0] >> 2) & 0x03, (self._data[1] >> 2) & 0x03)
+        self._lamp_status['rsl'] = DtcLamp().get_status((self._data[0] >> 4) & 0x03, (self._data[1] >> 4) & 0x03)
+        self._lamp_status['mil'] = DtcLamp().get_status((self._data[0] >> 6) & 0x03, (self._data[1] >> 6) & 0x03)
 
         # get DTC (Diagnostic Trouble Code)
         self._dtc_dic_list = []
@@ -267,3 +278,34 @@ class Dm1:
     def _notify_subscribers(self, sa, timestamp):
         for callback in self._subscribers:
             callback(sa, self.lamp_status, self._dtc_dic_list, timestamp)
+
+
+class Dm22:
+    """Individual Clear/Reset of Active and Previously Active DTC (DM22)
+    """
+    _msg_subscriber_added = False
+
+    # Individual DTC Clear/Reset Control Byte
+    class DTC_CLR_CTRL:
+        PA_REQ   =  1 # Request to clear/reset a specific previously active DTC
+        PA_ACK   =  2 # Positive acknowledge of clear/reset of a specific previously active DTC
+        PA_NACK  =  3 # Negative acknowledge of clear/reset of a specific previously active DTC
+        ACT_REQ  = 17 # Request to clear/reset a specific active DTC
+        ACT_ACK  = 18 # Positive acknowledge of clear/reset of a specific active DTC
+        ACT_NACK = 19 # Negative acknowledge of clear/reset of a specific active DTC
+
+    # Control Byte Specific Indicator for Individual DTC Clear
+    class DTC_CLR_CTRL_SPECIFIC:
+        GENERAL_NACK        = 0
+        ACCESS_DENIED       = 1
+        DTC_UNKNOWN         = 2
+        DTC_PA_NOT_ACTIVE   = 3
+        DTC_ACT_NOT_ACTIVE  = 4
+
+    def __init__(self, ecu: j1939.ElectronicControlUnit):
+        """
+        :param ecu:
+            ecu instance
+        """
+        self._pgn = j1939.ParameterGroupNumber.PGN.DM22
+        self._ecu = ecu

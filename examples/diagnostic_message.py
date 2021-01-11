@@ -41,12 +41,16 @@ def dm1_receive(sa, lamp_status, dtc_dic_list, timestamp):
     :param bytearray data:
         Data of the PDU
     """
-    print('DM1 received', sa, lamp_status, dtc_list)
+    print('DM1 received', sa, lamp_status, dtc_dic_list)
 
 
 def dm1_before_send():
     """This function is called before a Dm1 message is sent to collect the data
-
+ 
+    :return:
+        lamp status 
+    :rtype: dic: 'pl', 'awl', 'rsl', 'mil'
+    
     :return:
         list of dictionaries of all DTCs included in DM1
 
@@ -60,6 +64,7 @@ def dm1_before_send():
     lamp_status['mil'] = j1939.DtcLamp.OFF
 
     # add all active DTCs
+    # if no DTC is active return empty list
     dtc_list = []
     dtc_list.append({'spn': 123, 'fmi': 31})           # occurrence counter is set to 0
     dtc_list.append({'spn': 456, 'fmi': 1, 'oc': 132}) # with optional occurrence counter
