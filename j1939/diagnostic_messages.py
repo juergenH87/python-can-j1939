@@ -159,7 +159,7 @@ class Dm1:
         """
         self._subscribers.remove(callback) 
 
-    def start_send(self, callback, sa, cycletime=1, priority=6):
+    def start_send(self, callback, sa, cycletime=1):
         """Start cyclic sending of Dm1 message
         
         :param callback:
@@ -172,7 +172,7 @@ class Dm1:
         :param int priority:
             priority of Dm1 message   
         """
-        cookie = {'cb': callback, 'sa': sa, 'prio': priority}
+        cookie = {'cb': callback, 'sa': sa}
         self._ecu.add_timer(delta_time=cycletime, callback=self._send, cookie=cookie)
 
     def stop_send(self, callback):
@@ -238,8 +238,14 @@ class Dm1:
             self._data.append((dtc >> 16) & 0xFF)
             self._data.append((dtc >> 24) & 0xFF)
 
+        # Default Priority: 6 
+        # priority should be 7 when transport protocol is used (SAE J1939-21 requirement)
+        if self._data > 8:
+            priority = 7 
+        else: 
+            priority = 6
         # send pgn 
-        self._ecu.send_pgn(0, (self._pgn >> 8) & 0xFF, self._pgn & 0xFF, cookie['prio'], cookie['sa'], self._data )
+        self._ecu.send_pgn(0, (self._pgn >> 8) & 0xFF, self._pgn & 0xFF, priority, cookie['sa'], self._data )
 
         # returning true keeps the timer event active
         return True
@@ -277,7 +283,7 @@ class Dm1:
         
     def _notify_subscribers(self, sa, timestamp):
         for callback in self._subscribers:
-            callback(sa, self.lamp_status, self._dtc_dic_list, timestamp)
+            callback(sa, self.lamp_status.copy(), self._dtc_dic_list.copy(), timestamp)
 
 
 class Dm22:
@@ -309,3 +315,37 @@ class Dm22:
         """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM22
         self._ecu = ecu
+
+    def req_clear_act_dtc(self, spn, fmi, sa):
+        """Request to Clear/Reset Active DTC
+
+        :param spn:
+            spn of the dtc to be cleared
+        :param spn:
+            fmi of the dtc to be cleared
+        :param int sa:
+            Source address of Dm22 message  
+        """
+        self._send_request(self.DTC_CLR_CTRL.ACT_REQ, fmi, spn, sa)
+
+    def req_clear_pa_dtc(self, spn, fmi, sa):
+        """Request to Clear/Reset Previously Active DTC
+
+        :param spn:
+            spn of the dtc to be cleared
+        :param spn:
+            fmi of the dtc to be cleared
+        :param int sa:
+            Source address of Dm22 message  
+        """
+        self._send_request(self.DTC_CLR_CTRL.PA_REQ, fmi, spn, sa)
+
+    def _send_request(self, control_byte, fmi, spn, sa):
+        data = [0xFF]*8
+        data[0] = control_byte 
+        data[5] = spn & 0xFF
+        data[6] = (spn >> 8) & 0xFF
+        data[7] = ((spn >> 22) & 0xE0) | (fmi & 0x1F)
+
+        # send pgn 
+        self._ecu.send_pgn(0, (self._pgn >> 8) & 0xFF, self._pgn & 0xFF, 6, sa, data )
