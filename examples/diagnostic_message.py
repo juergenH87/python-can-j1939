@@ -41,7 +41,7 @@ def dm1_receive(sa, lamp_status, dtc_dic_list, timestamp):
     :param bytearray data:
         Data of the PDU
     """
-    print('DM1 received', sa, lamp_status, dtc_dic_list)
+    print('DM1 received from address:', sa, 'lamp status:', lamp_status, 'DTCs:', dtc_dic_list)
 
 
 def dm1_before_send():
@@ -91,16 +91,34 @@ def main():
     # subscribe to all (global) messages on the bus
     ecu.subscribe(on_message)
 
-    
+    # name descriptor for the ca
+    CA_NAME = j1939.Name(
+        arbitrary_address_capable=0,
+        industry_group=j1939.Name.IndustryGroup.Industrial,
+        vehicle_system_instance=1,
+        vehicle_system=1,
+        function=1,
+        function_instance=1,
+        ecu_instance=1,
+        manufacturer_code=666,
+        identity_number=1234567
+        )
+    ca = j1939.ControllerApplication(CA_NAME, 0xF1)
+    # add CA to the ECU
+    ecu.add_ca(controller_application=ca)
+    # by starting the CA it starts the address claiming procedure on the bus
+    ca.start()
+
+
     # create the instance of the Dm1 to be able to receive active DTCs
-    Dm1_rec = j1939.Dm1(ecu=ecu)
+    Dm1_rec = j1939.Dm1(ca)
     # subscribe to DM1-messages on the bus
     Dm1_rec.subscribe(dm1_receive)
 
     # create the instance of the Dm1 to be able to send active DTCs
-    Dm1_snd = j1939.Dm1(ecu=ecu)
+    Dm1_snd = j1939.Dm1(ca)
     # start sending Dm1-message from source-id 10
-    Dm1_snd.start_send(callback=dm1_before_send, source_address=10)
+    Dm1_snd.start_send(callback=dm1_before_send)
 
 
     time.sleep(120)
