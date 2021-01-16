@@ -67,8 +67,10 @@ Features
 * correct timeout and deadline handling
 * (under construction) almost complete testcoverage
 * (under construction) diagnostic messages (see https://github.com/juergenH87/python-can-j1939/tree/master/examples/diagnostic_message.py)
-
-  - support of DM1 interpretation
+    
+  - support of DM1 Tool and ECU functionaliy
+  - support of DM11 Tool functionaliy
+  - support of DM22 Tool functionaliy
 
 
 Installation
