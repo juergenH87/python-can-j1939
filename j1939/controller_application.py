@@ -1,7 +1,4 @@
 import logging
-import time
-
-import can
 import j1939
 
 logger = logging.getLogger(__name__)
@@ -49,6 +46,8 @@ class ControllerApplication:
         self._device_address = j1939.ParameterGroupNumber.Address.NULL
         self._device_address_state = ControllerApplication.State.NONE
         self._ecu = None
+        self._subscribers_request = []
+        self._subscribers_acknowledge = []
 
     def associate_ecu(self, ecu):
         """Binds this CA to the ECU given
@@ -78,6 +77,33 @@ class ControllerApplication:
             Function to call when message is received.
         """
         self._ecu.unsubscribe(callback)
+
+    def subscribe_request(self, callback):
+        """Add the given callback to the request notification stream.
+
+        :param callback: Function to call when a reuest is received.
+        """
+        self._subscribers_request.append(callback) 
+
+    def unsubscribe_request(self, callback):
+        """Add the given callback to the request notification stream.
+
+        :param callback: Function to call when a request is received.
+        """
+        self._subscribers_request.remove(callback) 
+
+    def subscribe_acknowledge(self, callback):
+        """Remove the given callback from the acknowledge notification stream 
+
+        :param callback: Function to call when an acknowledge is received.
+        """
+        self._subscribers_acknowledge.append(callback)
+
+    def unsubscribe_acknowledge(self, callback):
+        """Remove the given callback from the request notification stream.
+
+        :param callback: Function to call when an acknowledge is received.
+        """
 
     def add_timer(self, delta_time, callback, cookie=None):
         """Adds a callback to the list of timer events
@@ -216,7 +242,8 @@ class ControllerApplication:
             # answer the request with our name...
             self._send_address_claimed(self._device_address)
         else:
-            self.on_request(src_address, dest_address, pgn)
+            for subscriber in self._subscribers_request:
+                subscriber(src_address, dest_address, pgn)
                 
     def send_message(self, priority, parameter_group_number, data):
         if self.state != ControllerApplication.State.NORMAL:
@@ -255,22 +282,6 @@ class ControllerApplication:
         mid = j1939.MessageId(priority=6, parameter_group_number=pgn.value, source_address=address)
         data = self._name.bytes
         self._ecu.send_message(mid.can_id, data)
-
-    def on_message(self, priority, pgn, sa, timestamp, data):
-        """Callback for incoming message
-
-        :param int priority:
-            Priority of the message
-        :param int pgn:
-            Parameter Group Number of the message
-        :param sa:
-            Source Address of the message
-        :param timestamp:
-            Timestamp of the message
-        :param bytearray data:
-            Data of the PDU
-        """
-        pass
 
     def on_request(self, src_address, dest_address, pgn):
         """Callback for PGN requests

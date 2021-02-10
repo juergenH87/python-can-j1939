@@ -283,7 +283,6 @@ class Dm1:
             callback(sa, self.lamp_status.copy(), self._dtc_dic_list.copy(), timestamp)
 
 
-
 class Dm11:
     """Diagnostic Data Clear/Reset for Active DTCs (DM11)
     """
@@ -293,24 +292,36 @@ class Dm11:
         """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM11
         self._ca = ca
-        ca.subscribe(self._receive)
+        self._subscribers_req_clear = []
+        self._subscribers_ack_clear = []
+        ca.subscribe_request(self._on_request)
+        ca.subscribe_acknowledge(self._on_acknowledge)
 
-    def request_clear_all_dtc(self, destination):
+    def request_clear_all(self, destination):
         self._ca.send_request(0, self._pgn, destination)
 
-    def _receive(self, priority, pgn, source, timestamp, data):
-        # TODO
-        pass
+    def subscribe_request_clear_all(self, callback):
+        self._subscribers_req_clear.append(callback)
 
+    def subscribe_acknowledge_clear_all(self, callback):
+        self._subscribers_ack_clear.append(callback)
 
+    def _on_request(self, src_address, dest_address, pgn):
+        for subscriber in self._subscribers_req_clear:
+            subscriber(src_address, dest_address, pgn)
+            # TODO: send acknowledge           
+
+    def _on_acknowledge(self, src_address, dest_address, pgn):
+        for subscriber in self._subscribers_ack_clear:
+            # TODO
+            pass
 
 class Dm22:
     """Individual Clear/Reset of Active and Previously Active DTC (DM22)
     """
-    _msg_subscriber_added = False
-
-    # Individual DTC Clear/Reset Control Byte
     class DTC_CLR_CTRL:
+        """Individual DTC Clear/Reset Control Byte
+        """
         PA_REQ   =  1 # Request to clear/reset a specific previously active DTC
         PA_ACK   =  2 # Positive acknowledge of clear/reset of a specific previously active DTC
         PA_NACK  =  3 # Negative acknowledge of clear/reset of a specific previously active DTC
@@ -318,8 +329,9 @@ class Dm22:
         ACT_ACK  = 18 # Positive acknowledge of clear/reset of a specific active DTC
         ACT_NACK = 19 # Negative acknowledge of clear/reset of a specific active DTC
 
-    # Control Byte Specific Indicator for Individual DTC Clear
     class DTC_CLR_CTRL_SPECIFIC:
+        """Control Byte Specific Indicator for Individual DTC Clear
+        """
         GENERAL_NACK        = 0
         ACCESS_DENIED       = 1
         DTC_UNKNOWN         = 2
@@ -333,27 +345,31 @@ class Dm22:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM22
         self._ca = ca
 
-    def request_clear_act_dtc(self, spn, fmi):
+    def request_clear_act_dtc(self, dest_address, spn, fmi):
         """Request to Clear/Reset Active DTC
 
+        :param dest_address:
+            destination address of the node
         :param spn:
             spn of the dtc to be cleared
         :param spn:
             fmi of the dtc to be cleared
         """
-        self._send_request(self.DTC_CLR_CTRL.ACT_REQ, fmi, spn)
+        self._send_request(self.DTC_CLR_CTRL.ACT_REQ, dest_address, fmi, spn)
 
-    def request_clear_pa_dtc(self, spn, fmi):
+    def request_clear_pa_dtc(self, dest_address, spn, fmi):
         """Request to Clear/Reset Previously Active DTC
 
+        :param dest_address:
+            destination address of the node
         :param spn:
             spn of the dtc to be cleared
         :param spn:
             fmi of the dtc to be cleared
         """
-        self._send_request(self.DTC_CLR_CTRL.PA_REQ, fmi, spn)
+        self._send_request(self.DTC_CLR_CTRL.PA_REQ, dest_address, fmi, spn)
 
-    def _send_request(self, control_byte, fmi, spn):
+    def _send_request(self, control_byte, dest_address, fmi, spn):
         data = [0xFF]*8
         data[0] = control_byte 
         data[5] = spn & 0xFF
@@ -361,4 +377,4 @@ class Dm22:
         data[7] = ((spn >> 22) & 0xE0) | (fmi & 0x1F)
 
         # send pgn 
-        self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self._pgn & 0xFF, 6, data)
+        self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, dest_address & 0xFF, 6, data)
