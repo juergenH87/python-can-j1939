@@ -235,14 +235,14 @@ class Name:
     def bytes(self):
         """Get the Name object as 8 Byte Data"""
         return [
-            (self.value & (0xFF << 56)) >> 56,
-            (self.value & (0xFF << 48)) >> 48,
-            (self.value & (0xFF << 40)) >> 40,
-            (self.value & (0xFF << 32)) >> 32,
-            (self.value & (0xFF << 24)) >> 24,
-            (self.value & (0xFF << 16)) >> 16,
-            (self.value & (0xFF << 8)) >> 8,
-            (self.value & 0xFF)
+            ((self.value >>  0) & 0xFF),
+            ((self.value >>  8) & 0xFF),
+            ((self.value >> 16) & 0xFF),
+            ((self.value >> 24) & 0xFF),
+            ((self.value >> 32) & 0xFF),
+            ((self.value >> 40) & 0xFF),
+            ((self.value >> 48) & 0xFF),
+            ((self.value >> 56) & 0xFF)
         ]
 
     @bytes.setter
