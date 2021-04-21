@@ -364,6 +364,14 @@ class ElectronicControlUnit:
                 self._job_thread_wakeup()
                 return
 
+            num_packages_all = self._snd_buffer[buffer_hash]["num_packages"]
+            if num_packages > num_packages_all:
+                logger.warn("CTS: Allowed more packets %d than complete transmission %d", num_packages, num_packages_all)
+                num_packages = num_packages_all
+            if next_package_number + num_packages > num_packages_all:
+                logger.warn("CTS: Allowed more packets %d than needed to complete transmission %d", num_packages, num_packages_all - next_package_number)
+                num_packages = num_packages_all - next_package_number
+
             self._snd_buffer[buffer_hash]['deadline'] = time.time() + 10.0 # do not monitor deadlines while sending
             self._snd_buffer[buffer_hash]['state'] = ElectronicControlUnit.SendBufferState.SENDING_IN_CTS
             self._job_thread_wakeup()
@@ -381,6 +389,7 @@ class ElectronicControlUnit:
                         data.append(255)
                 data.insert(0, package+1)
                 self.send_tp_dt(dest_address, src_address, data)
+                time.sleep(0.01)
 
             self._snd_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T3
             self._snd_buffer[buffer_hash]['state'] = ElectronicControlUnit.SendBufferState.WAITING_CTS
@@ -392,6 +401,7 @@ class ElectronicControlUnit:
                 self.send_tp_abort(dest_address, src_address, ElectronicControlUnit.ConnectionAbortReason.RESOURCES, pgn)
                 return
             # TODO: should we inform the application about the successful transmission?
+            self.notify_subscribers(mid.priority, self._snd_buffer[buffer_hash]['pgn'], src_address, dest_address, timestamp, None)
             del self._snd_buffer[buffer_hash]
             self._job_thread_wakeup()
         elif control_byte == ElectronicControlUnit.ConnectionMode.BAM:
