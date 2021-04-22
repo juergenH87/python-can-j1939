@@ -366,10 +366,10 @@ class ElectronicControlUnit:
 
             num_packages_all = self._snd_buffer[buffer_hash]["num_packages"]
             if num_packages > num_packages_all:
-                logger.warn("CTS: Allowed more packets %d than complete transmission %d", num_packages, num_packages_all)
+                logger.debug("CTS: Allowed more packets %d than complete transmission %d", num_packages, num_packages_all)
                 num_packages = num_packages_all
             if next_package_number + num_packages > num_packages_all:
-                logger.warn("CTS: Allowed more packets %d than needed to complete transmission %d", num_packages, num_packages_all - next_package_number)
+                logger.debug("CTS: Allowed more packets %d than needed to complete transmission %d", num_packages, num_packages_all - next_package_number)
                 num_packages = num_packages_all - next_package_number
 
             self._snd_buffer[buffer_hash]['deadline'] = time.time() + 10.0 # do not monitor deadlines while sending
