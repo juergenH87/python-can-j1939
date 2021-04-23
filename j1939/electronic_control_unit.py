@@ -719,6 +719,7 @@ class ElectronicControlUnit:
                     }
             else:
                 # send RTS/CTS
+                pgn.pdu_specific = 0  # this is 0 for peer-to-peer transfer
                 # init new buffer for this connection
                 self._snd_buffer[buffer_hash] = {
                         "pgn": pgn.value,
