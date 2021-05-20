@@ -49,7 +49,7 @@ class ElectronicControlUnit:
         SENDING_IN_CTS = 1     # sending packages (temporary state)
         SENDING_BM = 2         # sending broadcast packages
 
-    def __init__(self, bus=None, max_cmdt_packets=1):
+    def __init__(self, bus=None, max_cmdt_packets=1, minimum_tp_dt_interval=None):
         """
         :param can.BusABC bus:
             A python-can bus instance to re-use.
@@ -61,6 +61,10 @@ class ElectronicControlUnit:
 
         # number of packets that can be sent/received with CMDT (Connection Mode Data Transfer)
         self._max_cmdt_packets = max_cmdt_packets
+
+        # minimum time between two tp_dt frames, not necessary for standard conforming applications,
+        # (they would use RTS/CTS flow control), but helps to talk to others without patching the library
+        self._minimum_tp_dt_interval = minimum_tp_dt_interval
 
         #: Includes at least MessageListener.
         self._listeners = [MessageListener(self)]
@@ -389,7 +393,8 @@ class ElectronicControlUnit:
                         data.append(255)
                 data.insert(0, package+1)
                 self.send_tp_dt(dest_address, src_address, data)
-                time.sleep(0.01)
+                if self._minimum_tp_dt_interval is not None:
+                    time.sleep(self._minimum_tp_dt_interval)
 
             self._snd_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T3
             self._snd_buffer[buffer_hash]['state'] = ElectronicControlUnit.SendBufferState.WAITING_CTS
