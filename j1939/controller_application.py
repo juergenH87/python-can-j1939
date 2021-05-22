@@ -51,7 +51,7 @@ class ControllerApplication:
 
     def associate_ecu(self, ecu):
         """Binds this CA to the ECU given
-        
+
         :param ecu:
             The ECU this CA should be bound to.
             A j1939 :class:`j1939.ElectronicControlUnit` instance
@@ -59,7 +59,7 @@ class ControllerApplication:
         self._ecu = ecu
 
     def remove_ecu(self):
-        
+
         self._ecu = None
 
     def subscribe(self, callback):
@@ -72,7 +72,7 @@ class ControllerApplication:
 
     def unsubscribe(self, callback):
         """Stop listening for message.
-        
+
         :param callback:
             Function to call when message is received.
         """
@@ -81,19 +81,19 @@ class ControllerApplication:
     def subscribe_request(self, callback):
         """Add the given callback to the request notification stream.
 
-        :param callback: Function to call when a reuest is received.
+        :param callback: Function to call when a request is received.
         """
-        self._subscribers_request.append(callback) 
+        self._subscribers_request.append(callback)
 
     def unsubscribe_request(self, callback):
-        """Add the given callback to the request notification stream.
+        """Remove the given callback to the request notification stream.
 
         :param callback: Function to call when a request is received.
         """
-        self._subscribers_request.remove(callback) 
+        self._subscribers_request.remove(callback)
 
     def subscribe_acknowledge(self, callback):
-        """Remove the given callback from the acknowledge notification stream 
+        """Add the given callback from the acknowledge notification stream
 
         :param callback: Function to call when an acknowledge is received.
         """
@@ -134,7 +134,7 @@ class ControllerApplication:
         """Stops the CA
         """
         self._ecu.remove_timer(self._process_claim_async)
-           
+
     def _process_claim_async(self, cookie):
         time_to_sleep = 0.500
         if self._device_address_state == ControllerApplication.State.NONE:
@@ -205,7 +205,7 @@ class ControllerApplication:
                     self._send_address_claimed(self._device_address_announced)
                     # TODO: it's not possible to set the VETO-Timeout from here
                     self._device_address_state = ControllerApplication.State.WAIT_VETO
-                   
+
             else:
                 # we have higher prio - repeat our claim message
                 logger.info("Contender lost the competition - we can keep our address")
@@ -213,9 +213,9 @@ class ControllerApplication:
                     # we own our address already
                     self._send_address_claimed(self._device_address)
                 else:
-                    # we are in the middle of the claim-process 
+                    # we are in the middle of the claim-process
                     self._send_address_claimed(self._device_address_announced)
-                
+
     def _process_request(self, mid, dest_address, data, timestamp):
         """Processes a REQUEST message
 
@@ -232,7 +232,7 @@ class ControllerApplication:
         src_address = mid.source_address
 
         if (self.state != ControllerApplication.State.NORMAL) or ((self._device_address != dest_address) and (dest_address != j1939.ParameterGroupNumber.Address.GLOBAL)):
-            # only answer if 
+            # only answer if
             # - we have a valid address and
             # - the destination_addr is ours OR the destination_addr is the GLOBAL one
             return
@@ -244,15 +244,15 @@ class ControllerApplication:
         else:
             for subscriber in self._subscribers_request:
                 subscriber(src_address, dest_address, pgn)
-                
+
     def send_message(self, priority, parameter_group_number, data):
         if self.state != ControllerApplication.State.NORMAL:
             raise RuntimeError("Could not send message unless address claiming has finished")
-        
+
         mid = j1939.MessageId(priority=priority, parameter_group_number=parameter_group_number, source_address=self._device_address)
         self._ecu.send_message(mid.can_id, data)
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data):    
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data):
         """send a pgn
         :param int data_page: data page
         :param int pdu_format: pdu format
@@ -262,8 +262,8 @@ class ControllerApplication:
         """
         if self.state != ControllerApplication.State.NORMAL:
             raise RuntimeError("Could not send message unless address claiming has finished")
-        
-        self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address_preferred, data) 
+
+        self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address_preferred, data)
 
     def send_request(self, data_page, pgn, destination):
         """send a request message
@@ -272,7 +272,7 @@ class ControllerApplication:
         :param list data: destination address
         """
         data = [(pgn & 0xFF), ((pgn >> 8) & 0xFF), ((pgn >> 16) & 0xFF)]
-        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, self._device_address_preferred, data) 
+        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, self._device_address_preferred, data)
 
     def _send_address_claimed(self, address):
         # TODO: Normally the (initial) address claimed message must not be an auto repeat message.
@@ -297,7 +297,7 @@ class ControllerApplication:
 
     def message_acceptable(self, dest_address):
         """Indicates if this CA would accept a message
-        
+
         This function indicates the acceptance of this CA for the given dest_address.
         """
         if self.state != j1939.ControllerApplication.State.NORMAL:

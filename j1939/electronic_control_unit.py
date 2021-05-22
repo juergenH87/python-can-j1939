@@ -49,18 +49,22 @@ class ElectronicControlUnit:
         SENDING_IN_CTS = 1     # sending packages (temporary state)
         SENDING_BM = 2         # sending broadcast packages
 
-    def __init__(self, bus=None, max_cmdt_packets=1):
+    def __init__(self, bus=None, max_cmdt_packets=1, minimum_tp_dt_interval=None):
         """
         :param can.BusABC bus:
             A python-can bus instance to re-use.
         """
         #: A python-can :class:`can.BusABC` instance
         self._bus = bus
-        # Locking object for send 
+        # Locking object for send
         self._send_lock = threading.Lock()
 
         # number of packets that can be sent/received with CMDT (Connection Mode Data Transfer)
         self._max_cmdt_packets = max_cmdt_packets
+
+        # minimum time between two tp_dt frames, not necessary for standard conforming applications,
+        # (they would use RTS/CTS flow control), but helps to talk to others without patching the library
+        self._minimum_tp_dt_interval = minimum_tp_dt_interval
 
         #: Includes at least MessageListener.
         self._listeners = [MessageListener(self)]
@@ -79,8 +83,8 @@ class ElectronicControlUnit:
         logger.info("Starting ECU async thread")
         self._job_thread_wakeup_queue = queue.Queue()
         self._job_thread = threading.Thread(target=self._async_job_thread, name='j1939.ecu job_thread')
-        # A thread can be flagged as a "daemon thread". The significance of 
-        # this flag is that the entire Python program exits when only daemon 
+        # A thread can be flagged as a "daemon thread". The significance of
+        # this flag is that the entire Python program exits when only daemon
         # threads are left.
         self._job_thread.daemon = True
         self._job_thread.start()
@@ -93,8 +97,8 @@ class ElectronicControlUnit:
         - Event trigger for associated CAs
         - Timeout monitoring of communication objects
 
-        To construct a blocking wait with timeout the task waits on a 
-        queue-object. When other tasks are adding timer-events they can 
+        To construct a blocking wait with timeout the task waits on a
+        queue-object. When other tasks are adding timer-events they can
         wakeup the timeout handler to recalculate the new sleep-time
         to awake at the new events.
         """
@@ -113,7 +117,7 @@ class ElectronicControlUnit:
                     else:
                         # deadline reached
                         logger.info("Deadline reached for rcv_buffer src 0x%02X dst 0x%02X", buf['src_address'], buf['dest_address'] )
-                        if buf['dest_address'] != j1939.ParameterGroupNumber.Address.GLOBAL:                        
+                        if buf['dest_address'] != j1939.ParameterGroupNumber.Address.GLOBAL:
                             # TODO: should we handle retries?
                             self.send_tp_abort(buf['dest_address'], buf['src_address'], ElectronicControlUnit.ConnectionAbortReason.TIMEOUT, buf['pgn'])
                         # TODO: should we notify our CAs about the cancelled transfer?
@@ -153,7 +157,7 @@ class ElectronicControlUnit:
 
                             if buf['next_packet_to_send'] < buf['num_packages']:
                                 buf['deadline'] = time.time() + ElectronicControlUnit.Timeout.Tb
-                                # recalc next wakeup    
+                                # recalc next wakeup
                                 if next_wakeup > buf['deadline']:
                                     next_wakeup = buf['deadline']
                             else:
@@ -176,13 +180,13 @@ class ElectronicControlUnit:
                         while event['deadline'] < now:
                             # just to take care of overruns
                             event['deadline'] += event['delta_time']
-                        # recalc next wakeup    
+                        # recalc next wakeup
                         if next_wakeup > event['deadline']:
                             next_wakeup = event['deadline']
                     else:
                         # remove from list
                         self._timer_events.remove( event )
-            
+
             time_to_sleep = next_wakeup - time.time()
             if time_to_sleep > 0:
                 try:
@@ -199,9 +203,9 @@ class ElectronicControlUnit:
         self._job_thread_end.set()
         self._job_thread_wakeup()
         self._job_thread.join()
-        
+
     def _job_thread_wakeup(self):
-        """Wakeup the async job thread 
+        """Wakeup the async job thread
 
         By calling this function we wakeup the asyncronous job thread to
         force a recalculation of his next wakeup event.
@@ -278,14 +282,14 @@ class ElectronicControlUnit:
             Device address of the application
             The address which the message is intended
 
-            if device_address is set to None or not entered, each message is received 
+            if device_address is set to None or not entered, each message is received
             (except: TP.CMDT is only received if the destination address is bound to a controller application)
         """
         self._subscribers.append({'cb': callback, 'dev_adr':device_address})
 
     def unsubscribe(self, callback):
         """Stop listening for message.
-        
+
         :param callback:
             Function to call when message is received.
         """
@@ -335,13 +339,13 @@ class ElectronicControlUnit:
                 # transmission is already established
                 self.send_tp_abort(dest_address, src_address, ElectronicControlUnit.ConnectionAbortReason.BUSY, pgn)
                 return
-            # open new buffer for this connection                
+            # open new buffer for this connection
             self._rcv_buffer[buffer_hash] = {
                     "pgn": pgn,
                     "message_size": message_size,
                     "num_packages": num_packages,
                     "next_packet": min(self._max_cmdt_packets, num_packages),
-                    "max_cmdt_packages": self._max_cmdt_packets, 
+                    "max_cmdt_packages": self._max_cmdt_packets,
                     "data": [],
                     "deadline": time.time() + ElectronicControlUnit.Timeout.T2,
                     'src_address' : src_address,
@@ -359,10 +363,18 @@ class ElectronicControlUnit:
                 return
             if num_packages == 0:
                 # SAE J1939/21
-                # receiver requests a pause   
+                # receiver requests a pause
                 self._snd_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.Th
                 self._job_thread_wakeup()
                 return
+
+            num_packages_all = self._snd_buffer[buffer_hash]["num_packages"]
+            if num_packages > num_packages_all:
+                logger.debug("CTS: Allowed more packets %d than complete transmission %d", num_packages, num_packages_all)
+                num_packages = num_packages_all
+            if next_package_number + num_packages > num_packages_all:
+                logger.debug("CTS: Allowed more packets %d than needed to complete transmission %d", num_packages, num_packages_all - next_package_number)
+                num_packages = num_packages_all - next_package_number
 
             self._snd_buffer[buffer_hash]['deadline'] = time.time() + 10.0 # do not monitor deadlines while sending
             self._snd_buffer[buffer_hash]['state'] = ElectronicControlUnit.SendBufferState.SENDING_IN_CTS
@@ -370,7 +382,7 @@ class ElectronicControlUnit:
 
             # TODO: should we send the answer packets asynchronously
             #       maybe in our _job_thread?
-            
+
             for package in range(next_package_number, next_package_number + num_packages):
                 offset = package * 7
                 data = self._snd_buffer[buffer_hash]['data'][offset:]
@@ -381,17 +393,20 @@ class ElectronicControlUnit:
                         data.append(255)
                 data.insert(0, package+1)
                 self.send_tp_dt(dest_address, src_address, data)
+                if self._minimum_tp_dt_interval is not None:
+                    time.sleep(self._minimum_tp_dt_interval)
 
             self._snd_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T3
             self._snd_buffer[buffer_hash]['state'] = ElectronicControlUnit.SendBufferState.WAITING_CTS
             self._job_thread_wakeup()
-                
+
         elif control_byte == ElectronicControlUnit.ConnectionMode.EOM_ACK:
             buffer_hash = self._buffer_hash(dest_address, src_address)
             if buffer_hash not in self._snd_buffer:
                 self.send_tp_abort(dest_address, src_address, ElectronicControlUnit.ConnectionAbortReason.RESOURCES, pgn)
                 return
             # TODO: should we inform the application about the successful transmission?
+            self.notify_subscribers(mid.priority, self._snd_buffer[buffer_hash]['pgn'], src_address, dest_address, timestamp, None)
             del self._snd_buffer[buffer_hash]
             self._job_thread_wakeup()
         elif control_byte == ElectronicControlUnit.ConnectionMode.BAM:
@@ -415,13 +430,13 @@ class ElectronicControlUnit:
                     'src_address' : src_address,
                     'dest_address' : dest_address,
                 }
-            self._job_thread_wakeup()                
+            self._job_thread_wakeup()
         elif control_byte == ElectronicControlUnit.ConnectionMode.ABORT:
             # TODO
             pass
         else:
             raise RuntimeError("Received TP.CM with unknown control_byte %d", control_byte)
-            
+
     def _process_tp_dt(self, mid, dest_address, data, timestamp):
         sequence_number = data[0]
 
@@ -452,13 +467,13 @@ class ElectronicControlUnit:
         if (dest_address != j1939.ParameterGroupNumber.Address.GLOBAL) and (sequence_number >= self._rcv_buffer[buffer_hash]['next_packet']):
 
             # send cts
-            number_of_packets_that_can_be_sent = min( self._max_cmdt_packets, 
-                                                      self._rcv_buffer[buffer_hash]['num_packages'] - self._rcv_buffer[buffer_hash]['next_packet'] )                                          
-            next_packet_to_be_sent = self._rcv_buffer[buffer_hash]['next_packet'] + 1 
+            number_of_packets_that_can_be_sent = min( self._max_cmdt_packets,
+                                                      self._rcv_buffer[buffer_hash]['num_packages'] - self._rcv_buffer[buffer_hash]['next_packet'] )
+            next_packet_to_be_sent = self._rcv_buffer[buffer_hash]['next_packet'] + 1
             self.send_tp_cts(dest_address, src_address, number_of_packets_that_can_be_sent, next_packet_to_be_sent, self._rcv_buffer[buffer_hash]['pgn'])
 
             # calculate next packet number at which a CTS is to be sent
-            self._rcv_buffer[buffer_hash]['next_packet'] = min(self._rcv_buffer[buffer_hash]['next_packet'] + self._max_cmdt_packets, 
+            self._rcv_buffer[buffer_hash]['next_packet'] = min(self._rcv_buffer[buffer_hash]['next_packet'] + self._max_cmdt_packets,
                                                                self._rcv_buffer[buffer_hash]['num_packages'])
 
             self._rcv_buffer[buffer_hash]['deadline'] = time.time() + ElectronicControlUnit.Timeout.T2
@@ -480,12 +495,12 @@ class ElectronicControlUnit:
         :param bytearray data:
             Data part of the message (0 - 8 bytes)
         :param float timestamp:
-            The timestamp field in a CAN message is a floating point number 
-            representing when the message was received since the epoch in 
-            seconds. 
+            The timestamp field in a CAN message is a floating point number
+            representing when the message was received since the epoch in
+            seconds.
             Where possible this will be timestamped in hardware.
         """
-        
+
         mid = j1939.MessageId(can_id=can_id)
         pgn = j1939.ParameterGroupNumber()
         pgn.from_message_id(mid)
@@ -570,7 +585,7 @@ class ElectronicControlUnit:
             ca = kwargs['controller_application']
         else:
             if 'name' not in kwargs:
-                raise ValueError("either 'controller_application' or 'name' must be provided") 
+                raise ValueError("either 'controller_application' or 'name' must be provided")
             name = kwargs.get('name')
             da = kwargs.get('device_address', None)
             ca = j1939.ControllerApplication(name, da)
@@ -590,7 +605,7 @@ class ElectronicControlUnit:
         """
         for ca in self._cas:
             if device_address == ca._device_address_preferred:
-                self._cas.remove(ca)    
+                self._cas.remove(ca)
                 return True
         return False
 
@@ -599,7 +614,7 @@ class ElectronicControlUnit:
         NACK = 1
         AccessDenied = 2
         CannotRespond = 3
-        
+
     def send_message(self, can_id, data):
         """Send a raw CAN message to the bus.
 
@@ -630,7 +645,7 @@ class ElectronicControlUnit:
         pgn = j1939.ParameterGroupNumber(0, 235, dest_address)
         mid = j1939.MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
         self.send_message(mid.can_id, data)
-        
+
     def send_tp_abort(self, src_address, dest_address, reason, pgn_value):
         pgn = j1939.ParameterGroupNumber(0, 236, dest_address)
         mid = j1939.MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
@@ -665,7 +680,7 @@ class ElectronicControlUnit:
         mid = j1939.MessageId(priority=priority, parameter_group_number=pgn.value, source_address=src_address)
         data = [ElectronicControlUnit.ConnectionMode.BAM, message_size & 0xFF, (message_size >> 8) & 0xFF, num_packets, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
         self.send_message(mid.can_id, data)
-        
+
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data):
         pgn = j1939.ParameterGroupNumber(data_page, pdu_format, pdu_specific)
         if len(data) <= 8:
@@ -686,7 +701,7 @@ class ElectronicControlUnit:
             if buffer_hash in self._snd_buffer:
                 # There is already a sequence active for this pair
                 return False
-            message_size = len(data)      
+            message_size = len(data)
             num_packets = int(message_size / 7) if (message_size % 7 == 0) else int(message_size / 7) + 1
 
             # if the PF is between 240 and 255, the message can only be broadcast
@@ -694,7 +709,7 @@ class ElectronicControlUnit:
                 # send BAM
                 self.send_tp_bam(src_address, priority, pgn.value, message_size, num_packets)
 
-                # init new buffer for this connection     
+                # init new buffer for this connection
                 self._snd_buffer[buffer_hash] = {
                         "pgn": pgn.value,
                         "priority": priority,
@@ -709,6 +724,7 @@ class ElectronicControlUnit:
                     }
             else:
                 # send RTS/CTS
+                pgn.pdu_specific = 0  # this is 0 for peer-to-peer transfer
                 # init new buffer for this connection
                 self._snd_buffer[buffer_hash] = {
                         "pgn": pgn.value,
@@ -747,4 +763,3 @@ class MessageListener(Listener):
         except Exception as e:
             # Exceptions in any callbaks should not affect CAN processing
             logger.error(str(e))
-        
