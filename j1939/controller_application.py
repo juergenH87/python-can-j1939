@@ -272,10 +272,14 @@ class ControllerApplication:
         :param list data: destination address
         """
         if self.state != ControllerApplication.State.NORMAL:
-            raise RuntimeError("Could not send request message unless address claiming has finished")
+            if pgn != j1939.ParameterGroupNumber.PGN.ADDRESSCLAIM:
+                raise RuntimeError("Could not send request message unless address claiming has finished")
+            source_address = j1939.ParameterGroupNumber.Address.NULL
+        else:
+            source_address = self._device_address
 
         data = [(pgn & 0xFF), ((pgn >> 8) & 0xFF), ((pgn >> 16) & 0xFF)]
-        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, self._device_address, data)
+        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, source_address, data)
 
     def _send_address_claimed(self, address):
         # TODO: Normally the (initial) address claimed message must not be an auto repeat message.
