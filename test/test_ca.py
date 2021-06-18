@@ -50,7 +50,7 @@ class TestCA(unittest.TestCase):
         expected_data = self.can_messages.pop(0)
         self.assertEqual(expected_data[0], TestCA.MsgType.CANTX, "No transmission was expected")
         self.assertEqual(can_id, expected_data[1])
-        self.assertSequenceEqual(data, expected_data[2])
+        self.assertSequenceEqual(data[::-1], expected_data[2])
         self._inject_messages_into_ecu()
 
     def _on_message(self, pgn, data):
@@ -64,7 +64,7 @@ class TestCA(unittest.TestCase):
         expected_data = self.pdus.pop(0)
         self.assertEqual(expected_data[0], TestCA.MsgType.PDU)
         self.assertEqual(pgn, expected_data[1])
-        self.assertSequenceEqual(data, expected_data[2])
+        self.assertSequenceEqual(data[::-1], expected_data[2])
 
     def setUp(self):
         """Called before each test methode.

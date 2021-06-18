@@ -111,6 +111,9 @@ def main():
 
     # add CA to the ECU
     ecu.add_ca(controller_application=ca)
+    # Wait until the controller application is ready
+    while ca.State != j1939.ControllerApplication.State.NORMAL:
+        time.sleep(0.1)
     ca.subscribe(ca_receive)
     # callback every 0.5s
     ca.add_timer(0.500, ca_timer_callback1)
