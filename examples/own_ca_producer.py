@@ -111,7 +111,6 @@ def main():
 
     # add CA to the ECU
     ecu.add_ca(controller_application=ca)
-        
     ca.subscribe(ca_receive)
     # callback every 0.5s
     ca.add_timer(0.500, ca_timer_callback1)
@@ -119,7 +118,7 @@ def main():
     ca.add_timer(5, ca_timer_callback2)
     # by starting the CA it starts the address claiming procedure on the bus
     ca.start()
-                     
+                        
     time.sleep(120)
 
     print("Deinitializing")

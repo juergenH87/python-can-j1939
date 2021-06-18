@@ -109,6 +109,7 @@ def main():
     # by starting the CA it starts the address claiming procedure on the bus
     ca.start()
 
+
     # create the instance of the Dm1 to be able to receive active DTCs
     Dm1_rec = j1939.Dm1(ca)
     # subscribe to DM1-messages on the bus
