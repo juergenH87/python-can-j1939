@@ -109,10 +109,6 @@ def main():
     # by starting the CA it starts the address claiming procedure on the bus
     ca.start()
 
-    # Wait until the controller application is ready
-    while ca.State != j1939.ControllerApplication.State.NORMAL:
-        time.sleep(0.1)
-
     # create the instance of the Dm1 to be able to receive active DTCs
     Dm1_rec = j1939.Dm1(ca)
     # subscribe to DM1-messages on the bus
