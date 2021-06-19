@@ -561,7 +561,7 @@ class ElectronicControlUnit:
         # notify only the CA for which the message is intended
         # each CA receives all broadcast messages
         for dic in self._subscribers:
-            if (dic['dev_adr'] == None) or (dest == j1939.ParameterGroupNumber.Address.GLOBAL) or (dest == dic['dev_adr']):
+            if (dic['dev_adr'] == None) or (dest == j1939.ParameterGroupNumber.Address.GLOBAL) or (callable(dic['dev_adr']) and dic['dev_adr'](dest)) or (dest == dic['dev_adr']):
                 dic['cb'](priority, pgn, sa, timestamp, data)
 
     def add_ca(self, **kwargs):

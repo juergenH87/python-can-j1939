@@ -68,7 +68,7 @@ class ControllerApplication:
         :param callback:
             Function to call when message is received.
         """
-        self._ecu.subscribe(callback, self._device_address_preferred)
+        self._ecu.subscribe(callback, self.message_acceptable)
 
     def unsubscribe(self, callback):
         """Stop listening for message.
@@ -121,7 +121,7 @@ class ControllerApplication:
         :param callback:
             The callback to be removed from the timer event list
         """
-        remove_timer(callback)
+        self._ecu.remove_timer(callback)
 
     def start(self):
         """Starts the CA
@@ -263,7 +263,7 @@ class ControllerApplication:
         if self.state != ControllerApplication.State.NORMAL:
             raise RuntimeError("Could not send message unless address claiming has finished")
 
-        self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address_preferred, data)
+        self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data)
 
     def send_request(self, data_page, pgn, destination):
         """send a request message
@@ -271,8 +271,15 @@ class ControllerApplication:
         :param int pgn: pgn to be requested
         :param list data: destination address
         """
+        if self.state != ControllerApplication.State.NORMAL:
+            if pgn != j1939.ParameterGroupNumber.PGN.ADDRESSCLAIM:
+                raise RuntimeError("Could not send request message unless address claiming has finished")
+            source_address = j1939.ParameterGroupNumber.Address.NULL
+        else:
+            source_address = self._device_address
+
         data = [(pgn & 0xFF), ((pgn >> 8) & 0xFF), ((pgn >> 16) & 0xFF)]
-        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, self._device_address_preferred, data)
+        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, source_address, data)
 
     def _send_address_claimed(self, address):
         # TODO: Normally the (initial) address claimed message must not be an auto repeat message.

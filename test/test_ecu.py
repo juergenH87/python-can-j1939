@@ -85,7 +85,10 @@ class TestECU(unittest.TestCase):
         expected_data = self.pdus.pop(0)
         self.assertEqual(expected_data[0], TestECU.MsgType.PDU)
         self.assertEqual(pgn, expected_data[1])
-        self.assertSequenceEqual(data, expected_data[2])
+        if isinstance(data, list):
+            self.assertSequenceEqual(data, expected_data[2])
+        else:
+            self.assertIsNone(data)
 
     def setUp(self):
         """Called before each test methode.
@@ -128,7 +131,7 @@ class TestECU(unittest.TestCase):
     #def test_connect(self):
     #    self.ecu.connect(bustype="virtual", channel=1)
     #    self.ecu.disconnect()
-
+    
     def test_broadcast_receive_short(self):
         """Test the receivement of a normal broadcast message
 
@@ -151,7 +154,7 @@ class TestECU(unittest.TestCase):
         # wait for final processing    
         time.sleep(0.100)
         self.ecu.unsubscribe(self._on_message)
-
+    
     def test_broadcast_receive_long(self):
         """Test the receivement of a long broadcast message
 
@@ -240,7 +243,7 @@ class TestECU(unittest.TestCase):
         Its length is 8 Bytes. The contained values are bogous of cause.
         """
         self.can_messages = [
-            (TestECU.MsgType.CANTX, 0x18009B90, [1, 2, 3, 4, 5, 6, 7, 8], 0.0),      # PGN 61440
+            (TestECU.MsgType.CANTX, 0x18F09B90, [1, 2, 3, 4, 5, 6, 7, 8], 0.0),      # PGN 61440
         ]
 
         pdu = (TestECU.MsgType.PDU, 61440, [1, 2, 3, 4, 5, 6, 7, 8])
@@ -248,7 +251,7 @@ class TestECU(unittest.TestCase):
         self.ecu.subscribe(self._on_message)
 
         # sending from 144 to 155 with prio 6
-        self.ecu.send_pgn(0, pdu[1], 155, 6, 144, pdu[2])
+        self.ecu.send_pgn(0, pdu[1]>>8, 155, 6, 144, pdu[2])
         
         # wait until all messages are processed asynchronously
         while len(self.can_messages)>0:
@@ -265,22 +268,26 @@ class TestECU(unittest.TestCase):
         Its length is 20 Bytes.
         """
         self.can_messages = [
-            (TestECU.MsgType.CANTX, 0x18EC9B90, [16, 20, 0, 3, 255, 155, 0, 0], 0.0),        # TP.CM RTS 1
-            (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 1, 255, 255, 155, 0, 0], 0.0),       # TP.CM CTS 1
+            (TestECU.MsgType.CANTX, 0x18EC9B90, [16, 20, 0, 3, 255, 0, 223, 0], 0.0),        # TP.CM RTS 1
+            (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 1, 255, 255, 0, 223, 0], 0.0),       # TP.CM CTS 1
             (TestECU.MsgType.CANTX, 0x1CEB9B90, [1, 1, 2, 3, 4, 5, 6, 7], 0.0),              # TP.DT 1
-            (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 2, 255, 255, 155, 0, 0], 0.0),       # TP.CM CTS 2
+            (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 2, 255, 255, 0, 223, 0], 0.0),       # TP.CM CTS 2
             (TestECU.MsgType.CANTX, 0x1CEB9B90, [2, 1, 2, 3, 4, 5, 6, 7], 0.0),              # TP.DT 2
-            (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 3, 255, 255, 155, 0, 0], 0.0),       # TP.CM CTS 3
+            (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 3, 255, 255, 0, 223, 0], 0.0),       # TP.CM CTS 3
             (TestECU.MsgType.CANTX, 0x1CEB9B90, [3, 1, 2, 3, 4, 5, 6, 255], 0.0),            # TP.DT 3
-            (TestECU.MsgType.CANRX, 0x1CEC909B, [19, 20, 0, 3, 255, 155, 0, 0], 0.0),        # TP.CM EOMACK
+            (TestECU.MsgType.CANRX, 0x1CEC909B, [19, 20, 0, 3, 255, 0, 223, 0], 0.0),        # TP.CM EOMACK
+        ]
+
+        self.pdus = [
+            (TestECU.MsgType.PDU, 57088, None),
         ]
 
         pdu = (TestECU.MsgType.PDU, 57088, [1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6])
 
         self.ecu.subscribe(self._on_message)
-
+        
         # sending from 144 to 155 with prio 6
-        self.ecu.send_pgn(0, pdu[1], 155, 6, 144, pdu[2])
+        self.ecu.send_pgn(0, pdu[1]>>8, 155, 6, 144, pdu[2])
         
         # wait until all messages are processed asynchronously
         while len(self.can_messages)>0:
@@ -296,7 +303,7 @@ class TestECU(unittest.TestCase):
         Its length is 20 Bytes. The contained values are bogous of cause.
         """
         self.can_messages = [
-            (TestECU.MsgType.CANTX, 0x18ECFF90, [32, 20, 0, 3, 255, 255, 176, 0], 0.0),      # TP.BAM
+            (TestECU.MsgType.CANTX, 0x18ECFF90, [32, 20, 0, 3, 255, 176, 254, 0], 0.0),      # TP.BAM
             (TestECU.MsgType.CANTX, 0x1CEBFF90, [1, 1, 2, 3, 4, 5, 6, 7], 0.0),              # TP.DT 1
             (TestECU.MsgType.CANTX, 0x1CEBFF90, [2, 1, 2, 3, 4, 5, 6, 7], 0.0),              # TP.DT 2
             (TestECU.MsgType.CANTX, 0x1CEBFF90, [3, 1, 2, 3, 4, 5, 6, 255], 0.0),            # TP.DT 3
@@ -307,7 +314,7 @@ class TestECU(unittest.TestCase):
         self.ecu.subscribe(self._on_message)
 
         # sending from 144 to GLOABL with prio 6
-        self.ecu.send_pgn(0, pdu[1], j1939.ParameterGroupNumber.Address.GLOBAL, 6, 144, pdu[2])
+        self.ecu.send_pgn(0, pdu[1]>>8, pdu[1], 6, 144, pdu[2])
         
         # wait until all messages are processed asynchronously
         while len(self.can_messages)>0:
