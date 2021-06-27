@@ -1,7 +1,7 @@
 
 class MessageId:
     """The CAN MessageId of an PDU.
-    
+
     The MessageId consists of three parts:
       * Priority
       * Parameter Group Number
@@ -16,7 +16,7 @@ class MessageId:
             18-bit Parameter Group Number
         :param source_address:
             8-bit Source Address
-            There is a total of 253 addresses available and every address must 
+            There is a total of 253 addresses available and every address must
             be unique within the network.
 
         :param can_id:
@@ -35,7 +35,7 @@ class MessageId:
     def can_id(self):
         """Transforms the MessageId object to a 29 bit CAN-Id"""
         return (self.priority << 26) | (self.parameter_group_number << 8) | (self.source_address)
-        
+
     @can_id.setter
     def can_id(self, can_id):
         """Fill the MessageId with the information given in the 29 bit CAN-Id"""

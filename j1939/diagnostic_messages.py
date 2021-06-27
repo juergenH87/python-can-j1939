@@ -22,7 +22,7 @@ class DTC:
             self._fmi = fmi
             self._oc = oc
             self._cm = 0
-        
+
     @property
     def spn(self):
         """
@@ -42,7 +42,7 @@ class DTC:
         :rtype: int
         """
         return self._fmi
-        
+
     @property
     def oc(self):
         """
@@ -106,8 +106,8 @@ class DtcLamp:
                 status_dic[lamp_key] = DtcLamp.OFF
             elif status_dic[lamp_key] not in self._DATA_LUT:
                 status_dic[lamp_key] = DtcLamp.OFF
-                logger.error("Lamp status n/a")   
-            lamp, flash = self._DATA_LUT[status_dic[lamp_key]] 
+                logger.error("Lamp status n/a")
+            lamp, flash = self._DATA_LUT[status_dic[lamp_key]]
 
             data[0] |= (lamp  << (idx*2))
             data[1] |= (flash << (idx*2))
@@ -120,10 +120,10 @@ class Dm1:
 
     Parser for DM1
 
-    DM1 provides diagnostic lamp status and diagnostic trouble codes (DTCs). 
-    Together, the lamp and DTC information convey the diagnostic condition 
-    of the transmitting electronic component to other components on the network. 
-    Occurrence counts may be provided. 
+    DM1 provides diagnostic lamp status and diagnostic trouble codes (DTCs).
+    Together, the lamp and DTC information convey the diagnostic condition
+    of the transmitting electronic component to other components on the network.
+    Occurrence counts may be provided.
     """
     _msg_subscriber_added = False
 
@@ -148,26 +148,26 @@ class Dm1:
             self._ca.subscribe(self._receive)
             self._msg_subscriber_added = True
 
-        self._subscribers.append(callback) 
+        self._subscribers.append(callback)
 
     def unsubscribe(self, callback):
         """Stop listening for Dm1 message.
-        
+
         :param callback:
             Function to call when Dm1 message is received.
         """
-        self._subscribers.remove(callback) 
+        self._subscribers.remove(callback)
 
     def start_send(self, callback, cycletime=1):
         """Start cyclic sending of Dm1 message
-        
+
         :param callback:
             Function to call before Dm1 message is sent
         :param int cycletime:
             Optional send cycletime
             cycletime is 1s if not specified
         :param int priority:
-            priority of Dm1 message   
+            priority of Dm1 message
         """
         cookie = {'cb': callback,}
         self._ca.add_timer(delta_time=cycletime, callback=self._send, cookie=cookie)
@@ -214,20 +214,20 @@ class Dm1:
     def _send(self, cookie):
         # get dm1 data
         self._lamp_status, self._dtc_dic_list = cookie['cb']()
-        
+
         # create payload - lamp status
         self._data = DtcLamp().get_data(self._lamp_status)
 
         # create payload - dtc
         for dtc_dic in self._dtc_dic_list:
             # not optional arguments
-            if dtc_dic.get('spn') == None: 
+            if dtc_dic.get('spn') == None:
                 continue
-            if dtc_dic.get('fmi') == None: 
-                continue    
+            if dtc_dic.get('fmi') == None:
+                continue
             # optional arguments
-            if dtc_dic.get('oc') == None: 
-                dtc_dic['oc'] = 0 
+            if dtc_dic.get('oc') == None:
+                dtc_dic['oc'] = 0
 
             dtc = DTC(spn=dtc_dic['spn'], fmi=dtc_dic['fmi'], oc=dtc_dic['oc']).dtc
             self._data.append(dtc & 0xFF)
@@ -235,13 +235,13 @@ class Dm1:
             self._data.append((dtc >> 16) & 0xFF)
             self._data.append((dtc >> 24) & 0xFF)
 
-        # Default Priority: 6 
+        # Default Priority: 6
         # priority should be 7 when transport protocol is used (SAE J1939-21 requirement)
         if len(self._data) > 8:
-            priority = 7 
-        else: 
+            priority = 7
+        else:
             priority = 6
-        # send pgn 
+        # send pgn
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self._pgn & 0xFF, priority, self._data )
 
         # returning true keeps the timer event active
@@ -270,14 +270,14 @@ class Dm1:
         # get DTC (Diagnostic Trouble Code)
         self._dtc_dic_list = []
         for i in range(number_dtc):
-            dtc_int = ( (self._data[i*4+2] & 0xff) 
+            dtc_int = ( (self._data[i*4+2] & 0xff)
                      | ((self._data[i*4+3] & 0xff) << 8)
-                     | ((self._data[i*4+4] & 0xff) << 16) 
+                     | ((self._data[i*4+4] & 0xff) << 16)
                      | ((self._data[i*4+5] & 0xff) << 24))
 
             dtc = DTC(dtc=dtc_int)
             self._dtc_dic_list.append( {'spn': dtc.spn, 'fmi': dtc.fmi, 'oc': dtc.oc } )
-        
+
     def _notify_subscribers(self, sa, timestamp):
         for callback in self._subscribers:
             callback(sa, self.lamp_status.copy(), self._dtc_dic_list.copy(), timestamp)
@@ -309,7 +309,7 @@ class Dm11:
     def _on_request(self, src_address, dest_address, pgn):
         for subscriber in self._subscribers_req_clear:
             subscriber(src_address, dest_address, pgn)
-            # TODO: send acknowledge           
+            # TODO: send acknowledge
 
     def _on_acknowledge(self, src_address, dest_address, pgn):
         for subscriber in self._subscribers_ack_clear:
@@ -371,10 +371,10 @@ class Dm22:
 
     def _send_request(self, control_byte, dest_address, fmi, spn):
         data = [0xFF]*8
-        data[0] = control_byte 
+        data[0] = control_byte
         data[5] = spn & 0xFF
         data[6] = (spn >> 8) & 0xFF
         data[7] = ((spn >> 22) & 0xE0) | (fmi & 0x1F)
 
-        # send pgn 
+        # send pgn
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, dest_address & 0xFF, 6, data)

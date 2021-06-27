@@ -36,7 +36,6 @@ class ControllerApplication:
         """
         :param name:
             A j1939 :class:`j1939.Name` instance
-
         :param device_address_preferred:
             The device_address this CA should claim on the bus.
         """
@@ -51,11 +50,11 @@ class ControllerApplication:
 
     def associate_ecu(self, ecu):
         """Binds this CA to the ECU given
-
         :param ecu:
             The ECU this CA should be bound to.
             A j1939 :class:`j1939.ElectronicControlUnit` instance
         """
+        self._ecu : j1939.ElectronicControlUnit
         self._ecu = ecu
 
     def remove_ecu(self):
@@ -64,7 +63,6 @@ class ControllerApplication:
 
     def subscribe(self, callback):
         """Add the given callback to the message notification stream.
-
         :param callback:
             Function to call when message is received.
         """
@@ -72,7 +70,6 @@ class ControllerApplication:
 
     def unsubscribe(self, callback):
         """Stop listening for message.
-
         :param callback:
             Function to call when message is received.
         """
@@ -80,34 +77,29 @@ class ControllerApplication:
 
     def subscribe_request(self, callback):
         """Add the given callback to the request notification stream.
-
         :param callback: Function to call when a request is received.
         """
         self._subscribers_request.append(callback)
 
     def unsubscribe_request(self, callback):
         """Remove the given callback to the request notification stream.
-
         :param callback: Function to call when a request is received.
         """
         self._subscribers_request.remove(callback)
 
     def subscribe_acknowledge(self, callback):
         """Add the given callback from the acknowledge notification stream
-
         :param callback: Function to call when an acknowledge is received.
         """
         self._subscribers_acknowledge.append(callback)
 
     def unsubscribe_acknowledge(self, callback):
         """Remove the given callback from the request notification stream.
-
         :param callback: Function to call when an acknowledge is received.
         """
 
     def add_timer(self, delta_time, callback, cookie=None):
         """Adds a callback to the list of timer events
-
         :param delta_time:
             The time in seconds after which the event is to be triggered.
         :param callback:
@@ -117,7 +109,6 @@ class ControllerApplication:
 
     def remove_timer(self, callback):
         """Removes ALL entries from the timer event list for the given callback
-
         :param callback:
             The callback to be removed from the timer event list
         """
@@ -165,7 +156,6 @@ class ControllerApplication:
 
     def _process_addressclaim(self, mid, data, timestamp):
         """Processes an address claim message
-
         :param j1939.MessageId mid:
             A MessageId object holding the information extracted from the can_id.
         :param bytearray data:
@@ -218,7 +208,6 @@ class ControllerApplication:
 
     def _process_request(self, mid, dest_address, data, timestamp):
         """Processes a REQUEST message
-
         :param j1939.MessageId mid:
             A MessageId object holding the information extracted from the can_id.
         :param int dest_address:
@@ -252,18 +241,21 @@ class ControllerApplication:
         mid = j1939.MessageId(priority=priority, parameter_group_number=parameter_group_number, source_address=self._device_address)
         self._ecu.send_message(mid.can_id, data)
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data, time_limit=0):
         """send a pgn
         :param int data_page: data page
         :param int pdu_format: pdu format
         :param int pdu_specific: pdu specific
         :param int priority: message priority
         :param list data: payload, each list index represents one payload byte
+        :param time_limit: option j1939-22 multi-pg: specify a time limit in s (e.g. 0.1 == 100ms),
+        after this time, the multi-pg will be sent. several pgs can thus be combined in one multi-pg.
+        0 or no time-limit means immediate sending.
         """
         if self.state != ControllerApplication.State.NORMAL:
             raise RuntimeError("Could not send message unless address claiming has finished")
 
-        self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data)
+        return self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data, time_limit)
 
     def send_request(self, data_page, pgn, destination):
         """send a request message
@@ -292,7 +284,6 @@ class ControllerApplication:
 
     def on_request(self, src_address, dest_address, pgn):
         """Callback for PGN requests
-
         :param int src_address:
             The address the request comes from
         :param int dest_address:
@@ -304,7 +295,6 @@ class ControllerApplication:
 
     def message_acceptable(self, dest_address):
         """Indicates if this CA would accept a message
-
         This function indicates the acceptance of this CA for the given dest_address.
         """
         if self.state != j1939.ControllerApplication.State.NORMAL:
@@ -322,5 +312,3 @@ class ControllerApplication:
         if self.state != j1939.ControllerApplication.State.NORMAL:
             return j1939.ParameterGroupNumber.Address.NULL
         return self._device_address
-
-

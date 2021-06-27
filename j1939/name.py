@@ -1,51 +1,51 @@
 
 class Name:
     """The Name of one Controller Application.
-    
+
     The Name consists of 64 bit:
 
         1-bit Arbitrary Address Capable
         Indicate the capability to solve address conflicts.
-        Set to 1 if the device is Arbitrary Address Capable, set to 0 if 
+        Set to 1 if the device is Arbitrary Address Capable, set to 0 if
         it's Single Address Capable.
 
         3-bit Industry Group
         One of the predefined J1939 industry groups.
 
         4-bit Vehicle System Instance
-        Instance number of a vehicle system to distinguish two or more 
-        device with the same Vehicle System number in the same J1939 
+        Instance number of a vehicle system to distinguish two or more
+        device with the same Vehicle System number in the same J1939
         network.
         The first instance is assigned to the instance number 0.
 
         7-bit Vehicle System
-        A subcomponent of a vehicle, that includes one or more J1939 
+        A subcomponent of a vehicle, that includes one or more J1939
         segments and may be connected or disconnected from the vehicle.
-        A Vehicle System may be made of one or more functions. The Vehicle 
+        A Vehicle System may be made of one or more functions. The Vehicle
         System depends on the Industry Group definition.
 
         1-bit Reserved
         This field is reserved for future use by SAE.
 
         8-bit Function
-        One of the predefined J1939 functions. The same function value 
-        (upper 128 only) may mean different things for different Industry 
+        One of the predefined J1939 functions. The same function value
+        (upper 128 only) may mean different things for different Industry
         Groups or Vehicle Systems.
 
         5-bit Function Instance
-        Instance number of a function to distinguish two or more devices 
+        Instance number of a function to distinguish two or more devices
         with the same function number in the same J1939 network.
         The first instance is assigned to the instance number 0.
 
         3-bit ECU Instance
-        Identify the ECU instance if multiple ECUs are involved in 
+        Identify the ECU instance if multiple ECUs are involved in
         performing a single function. Normally set to 0.
 
         11-bit Manufacturer Code
         One of the predefined J1939 manufacturer codes.
 
         21-bit Identity Number
-        A unique number which identifies the particular device in a 
+        A unique number which identifies the particular device in a
         manufacturer specific way.
     """
 
@@ -61,50 +61,50 @@ class Name:
         """
         :param value:
             64-bit value the address should be extracted from
-        
+
         :param bytes:
             Array of 8 bytes containing the name object as binary representation.
 
         :param arbitrary_address_capable:
             1-bit Arbitrary Address Capable
             Indicate the capability to solve address conflicts.
-            Set to 1 if the device is Arbitrary Address Capable, set to 0 if 
+            Set to 1 if the device is Arbitrary Address Capable, set to 0 if
             it's Single Address Capable.
         :param industry_group:
             3-bit Industry Group
             One of the predefined J1939 industry groups.
         :param vehicle_system_instance:
             4-bit Vehicle System Instance
-            Instance number of a vehicle system to distinguish two or more 
-            device with the same Vehicle System number in the same J1939 
+            Instance number of a vehicle system to distinguish two or more
+            device with the same Vehicle System number in the same J1939
             network.
             The first instance is assigned to the instance number 0.
         :param vehicle_system:
             7-bit Vehicle System
-            A subcomponent of a vehicle, that includes one or more J1939 
+            A subcomponent of a vehicle, that includes one or more J1939
             segments and may be connected or disconnected from the vehicle.
-            A Vehicle System may be made of one or more functions. The Vehicle 
+            A Vehicle System may be made of one or more functions. The Vehicle
             System depends on the Industry Group definition.
         :param function:
             8-bit Function
-            One of the predefined J1939 functions. The same function value 
-            (upper 128 only) may mean different things for different Industry 
+            One of the predefined J1939 functions. The same function value
+            (upper 128 only) may mean different things for different Industry
             Groups or Vehicle Systems.
         :param function_instance:
             5-bit Function Instance
-            Instance number of a function to distinguish two or more devices 
+            Instance number of a function to distinguish two or more devices
             with the same function number in the same J1939 network.
             The first instance is assigned to the instance number 0.
         :param ecu_instance:
             3-bit ECU Instance
-            Identify the ECU instance if multiple ECUs are involved in 
+            Identify the ECU instance if multiple ECUs are involved in
             performing a single function. Normally set to 0.
         :param manufacturer_code:
             11-bit Manufacturer Code
             One of the predefined J1939 manufacturer codes.
         :param identity_number:
             21-bit Identity Number
-            A unique number which identifies the particular device in a 
+            A unique number which identifies the particular device in a
             manufacturer specific way.
         """
         if 'value' in kwargs:
@@ -127,7 +127,7 @@ class Name:
     @property
     def arbitrary_address_capable(self):
         return self.__arbitrary_address_capable
-        
+
     @arbitrary_address_capable.setter
     def arbitrary_address_capable(self, value):
         self.__arbitrary_address_capable = value
@@ -135,7 +135,7 @@ class Name:
     @property
     def industry_group(self):
         return self.__industry_group
-        
+
     @industry_group.setter
     def industry_group(self, value):
         self.__industry_group = value
@@ -143,7 +143,7 @@ class Name:
     @property
     def vehicle_system_instance(self):
         return self.__vehicle_system_instance
-        
+
     @vehicle_system_instance.setter
     def vehicle_system_instance(self, value):
         self.__vehicle_system_instance = value
@@ -151,7 +151,7 @@ class Name:
     @property
     def vehicle_system(self):
         return self.__vehicle_system
-        
+
     @vehicle_system.setter
     def vehicle_system(self, value):
         self.__vehicle_system = value
@@ -159,7 +159,7 @@ class Name:
     @property
     def reserved_bit(self):
         return self.__reserved_bit
-        
+
     @reserved_bit.setter
     def reserved_bit(self, value):
         self.__reserved_bit = value
@@ -167,7 +167,7 @@ class Name:
     @property
     def function(self):
         return self.__function
-        
+
     @function.setter
     def function(self, value):
         self.__function = value
@@ -175,7 +175,7 @@ class Name:
     @property
     def function_instance(self):
         return self.__function_instance
-        
+
     @function_instance.setter
     def function_instance(self, value):
         self.__function_instance = value
@@ -183,7 +183,7 @@ class Name:
     @property
     def ecu_instance(self):
         return self.__ecu_instance
-        
+
     @ecu_instance.setter
     def ecu_instance(self, value):
         self.__ecu_instance = value
@@ -191,7 +191,7 @@ class Name:
     @property
     def manufacturer_code(self):
         return self.__manufacturer_code
-        
+
     @manufacturer_code.setter
     def manufacturer_code(self, value):
         self.__manufacturer_code = value
@@ -199,7 +199,7 @@ class Name:
     @property
     def identity_number(self):
         return self.__identity_number
-        
+
     @identity_number.setter
     def identity_number(self, value):
         self.__identity_number = value
@@ -247,4 +247,4 @@ class Name:
 
     @bytes.setter
     def bytes(self, value):
-        self.value = int("".join("%.2X" % _byte for _byte in value), 16)        
+        self.value = int("".join("%.2X" % _byte for _byte in value), 16)

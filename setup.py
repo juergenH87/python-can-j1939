@@ -13,7 +13,7 @@ setup(
     packages=find_packages(exclude=['docs', 'examples']),
     author="Juergen Heilgemeir",
     description="SAE J1939 stack implementation",
-    keywords="CAN SAE J1939",
+    keywords="CAN SAE J1939 J1939-FD J1939-22",
     long_description=description,
     long_description_content_type='text/x-rst',
     license="MIT",

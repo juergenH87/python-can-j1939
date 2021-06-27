@@ -12,22 +12,21 @@ SAE J1939 for Python
    :alt: Documentation build Status
 
 
-An implementation of the CAN SAE J1939 standard for Python. 
-This implementation was taken from https://github.com/benkfra/j1939, as no
-further development took place.
+An implementation of the CAN SAE J1939 standard for Python.
+This is the first J1939-22 (J1939-FD) implementation!
 
-If you experience a problem or think the stack would not behave properly, do 
+If you experience a problem or think the stack would not behave properly, do
 not hesitate to open a ticket or write an email.
 Pullrequests are of course even more welcome!
 
-The project uses the python-can_ package to support multiple hardware drivers. 
-At the time of writing the supported interfaces are 
+The project uses the python-can_ package to support multiple hardware drivers.
+At the time of writing the supported interfaces are
 
 * CAN over Serial
 * CAN over Serial / SLCAN
 * CANalyst-II
 * IXXAT Virtual CAN Interface
-* Kvaser’s CANLIB
+* Kvasers CANLIB
 * NEOVI Interface
 * NI-CAN
 * PCAN Basic API
@@ -41,14 +40,14 @@ At the time of writing the supported interfaces are
 Overview
 --------
 
-An SAE J1939 CAN Network consists of multiple Electronic Control Units (ECUs). 
-Each ECU can have one or more Controller Applications (CAs). Each CA has its 
-own (unique) Address on the bus. This address is either acquired within the 
+An SAE J1939 CAN Network consists of multiple Electronic Control Units (ECUs).
+Each ECU can have one or more Controller Applications (CAs). Each CA has its
+own (unique) Address on the bus. This address is either acquired within the
 address claiming procedure or set to a fixed value. In the latter case, the CA
 has to announce its address to the bus to check whether it is free.
 
 The CAN messages in a SAE J1939 network are called Protocol Data Units (PDUs).
-This definition is not completely correct, but close enough to think of PDUs 
+This definition is not completely correct, but close enough to think of PDUs
 as the CAN messages.
 
 
@@ -57,17 +56,22 @@ Features
 
 * one ElectronicControlUnit (ECU) can hold multiple ControllerApplications (CA)
 * ECU (CA) Naming according SAE J1939/81
-* (under construction) full featured address claiming procedure according SAE J1939/81
-* full support of transport protocol (up to 1785 bytes) according SAE J1939/21 for sending and receiveing
+* full featured address claiming procedure according SAE J1939/81
+* full support of transport protocol (up to 1785 bytes) according SAE J1939/21 for sending and receiving
 
   - Connection Mode Data Transfers (CMDT)
   - Broadcast Announce Message (BAM)
+* support of Multi-PG according SAE J1939/22
+  - currently FEFF (Flexible Data Rate Extended Frame Format) supported only
+* full support of fd-transport protocol according SAE J1939/22 (J1939-FD) for sending and receiving
 
-* (under construction) Requests (global and specific)
+  - RTS/CTS (Destination Specific) Transfer with up to 8 concurrent sessions and up to 16777215 bytes of data per session
+  - Broadcast Announce Message (BAM) with up to 4 concurrent sessions and up to 15300 bytes of data per session
+
+* Requests (global and specific)
 * correct timeout and deadline handling
 * (under construction) almost complete testcoverage
-* (under construction) diagnostic messages (see https://github.com/juergenH87/python-can-j1939/tree/master/examples/diagnostic_message.py)
-    
+* diagnostic messages (see https://github.com/juergenH87/python-can-j1939/tree/master/examples/diagnostic_message.py)
   - support of DM1 Tool and ECU functionaliy
   - support of DM11 Tool functionaliy
   - support of DM22 Tool functionaliy
@@ -139,7 +143,7 @@ To simply receive all passing (public) messages on the bus you can subscribe to 
         ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', bitrate=250000)
         # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
         # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
-        # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)    
+        # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)
 
         # subscribe to all (global) messages on the bus
         ecu.subscribe(on_message)
@@ -150,7 +154,7 @@ To simply receive all passing (public) messages on the bus you can subscribe to 
         ecu.disconnect()
 
     if __name__ == '__main__':
-        main()        
+        main()
 
 A more sophisticated example in which the CA class was overloaded to include its own functionality:
 
@@ -166,7 +170,7 @@ A more sophisticated example in which the CA class was overloaded to include its
 
     # compose the name descriptor for the new ca
     name = j1939.Name(
-        arbitrary_address_capable=0, 
+        arbitrary_address_capable=0,
         industry_group=j1939.Name.IndustryGroup.Industrial,
         vehicle_system_instance=1,
         vehicle_system=1,
@@ -200,7 +204,7 @@ A more sophisticated example in which the CA class was overloaded to include its
     def ca_timer_callback1(cookie):
         """Callback for sending messages
 
-        This callback is registered at the ECU timer event mechanism to be 
+        This callback is registered at the ECU timer event mechanism to be
         executed every 500ms.
 
         :param cookie:
@@ -227,7 +231,7 @@ A more sophisticated example in which the CA class was overloaded to include its
     def ca_timer_callback2(cookie):
         """Callback for sending messages
 
-        This callback is registered at the ECU timer event mechanism to be 
+        This callback is registered at the ECU timer event mechanism to be
         executed every 500ms.
 
         :param cookie:
@@ -264,7 +268,7 @@ A more sophisticated example in which the CA class was overloaded to include its
         ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', bitrate=250000)
         # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
         # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
-        # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)    
+        # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)
         # ecu.connect('testchannel_1', bustype='virtual')
 
         # add CA to the ECU
@@ -276,7 +280,7 @@ A more sophisticated example in which the CA class was overloaded to include its
         ca.add_timer(5, ca_timer_callback2)
         # by starting the CA it starts the address claiming procedure on the bus
         ca.start()
-                            
+
         time.sleep(120)
 
         print("Deinitializing")
@@ -284,19 +288,16 @@ A more sophisticated example in which the CA class was overloaded to include its
         ecu.disconnect()
 
     if __name__ == '__main__':
-        main()  
+        main()
+
 
 Credits
 -------
+This implementation was taken from https://github.com/benkfra/j1939, as no further development took place.
 
-This implementation was initially inspired by the `CANopen project of Christian Sandberg`_.
 Thanks for your great work!
-
-Most of the informations about SAE J1939 are taken from the papers and the book of 
-`Copperhill technologies`_ and from my many years of experience in J1939 of course :-)
 
 
 
 .. _python-can: https://python-can.readthedocs.org/en/stable/
 .. _Copperhill technologies: http://copperhilltech.com/a-brief-introduction-to-the-sae-j1939-protocol/
-.. _CANopen project of Christian Sandberg: http://canopen.readthedocs.io/en/stable/
