@@ -449,7 +449,7 @@ class J1939_22:
         """
 
         # check minimum tp-cm length
-        if len(data) <= 12:
+        if len(data) < 12:
             logger.info('tp-cm with incorrect dlc received, id', mid )
             return
 
@@ -744,11 +744,6 @@ class J1939_22:
         pgn = ParameterGroupNumber()
         pgn.from_message_id(mid)
 
-        if pgn.is_pdu2_format:
-            # direct broadcast
-            self.__notify_subscribers(mid.priority, pgn.value, mid.source_address, ParameterGroupNumber.Address.GLOBAL, timestamp, data)
-            return
-
         # peer to peer
         # pdu_specific is destination Address
         pgn_value = pgn.value & 0x1FF00
@@ -762,7 +757,7 @@ class J1939_22:
                     reject = False
                     break
             if reject == True:
-                return
+                return)
 
         if pgn_value == ParameterGroupNumber.PGN.FEFF_MULTI_PG:
             self._process_multi_pg(mid, dest_address, data, timestamp)
@@ -781,7 +776,9 @@ class J1939_22:
             logger.info('j1939-21 transport protocol cm not allowed in j1939-22 network')
         elif pgn_value == ParameterGroupNumber.PGN.DATATRANSFER:
             logger.info('j1939-21 transport protocol dt not allowed in j1939-22 network')
+        elif pgn.is_pdu2_format:
+            # direct broadcast
+            self.__notify_subscribers(mid.priority, pgn.value, mid.source_address, ParameterGroupNumber.Address.GLOBAL, timestamp, data)
         else:
             self.__notify_subscribers(mid.priority, pgn_value, mid.source_address, dest_address, timestamp, data)
-            return
 

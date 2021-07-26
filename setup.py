@@ -25,7 +25,10 @@ setup(
         "Intended Audience :: Developers",
         "Topic :: Scientific/Engineering"
     ],
-    install_requires=["python-can>=3.0.0"],
+    install_requires=[
+        "python-can>=3.0.0",
+        "numpy >= 1.17.0"
+    ],
     include_package_data=True,
 
     # Tests can be run using `python setup.py test`
