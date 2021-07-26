@@ -757,7 +757,7 @@ class J1939_22:
                     reject = False
                     break
             if reject == True:
-                return)
+                return
 
         if pgn_value == ParameterGroupNumber.PGN.FEFF_MULTI_PG:
             self._process_multi_pg(mid, dest_address, data, timestamp)
