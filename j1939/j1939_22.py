@@ -480,7 +480,8 @@ class J1939_22:
                     'session': session_num,
                     'message_size': message_size, # total message size, number of bytes
                     'num_segments': segment_num,  # total number of segments
-                    'next_packet': min(self._max_cmdt_packets, num_segments),
+                    'next_packet': 1,
+                    'next_cts_border': min(self._max_cmdt_packets, num_segments),
                     'num_segments_max_rec': min(self._max_cmdt_packets, num_segments),
                     'data': [],
                     'deadline': time.time() + self.Timeout.T2,
@@ -587,17 +588,28 @@ class J1939_22:
             return
 
         src_address = mid.source_address
-        session_num =  data[0] & 0xF
-        dtfi        = (data[0] >> 4) & 0xF # Data Transfer Format Indicator
+        dtfi        =  data[0] & 0xF # Data Transfer Format Indicator
+        session_num = (data[0] >> 4) & 0xF
         segment_num = (data[1] & 0xFF) | ((data[2]  & 0xFF) << 8) | ((data[3] & 0xFF)  << 16)
+
+        if segment_num == 0:
+            logger.critical('segment number of 0 is not valid.')
+            return
 
         buffer_hash = self._buffer_hash(session_num, src_address, dest_address)
         if buffer_hash not in self._rcv_buffer:
             logger.critical('buffer error process dt 0x%x', buffer_hash)
             return
 
+        if self._rcv_buffer[buffer_hash]['next_packet'] != segment_num:
+            logger.critical('packet error. required: '+ str(self._rcv_buffer[buffer_hash]['next_packet']) + ' received: ' + str(segment_num) )
+            return
+
         # get data
         self._rcv_buffer[buffer_hash]['data'].extend(data[4:])
+
+        self._rcv_buffer[buffer_hash]['next_packet'] = segment_num + 1
+
         # message is complete with sending an acknowledge
         if len(self._rcv_buffer[buffer_hash]['data']) >= self._rcv_buffer[buffer_hash]['message_size']:
             logger.info('finished RCV of PGN {} with size {}'.format(self._rcv_buffer[buffer_hash]['pgn'], self._rcv_buffer[buffer_hash]['message_size']))
@@ -611,15 +623,14 @@ class J1939_22:
             return
 
         # send clear to send
-        if (dest_address != ParameterGroupNumber.Address.GLOBAL) and (segment_num >= self._rcv_buffer[buffer_hash]['next_packet']):
-
+        if (dest_address != ParameterGroupNumber.Address.GLOBAL) and (segment_num >= self._rcv_buffer[buffer_hash]['next_cts_border']):
             # send cts
-            number_of_packets_that_can_be_sent = min( self._rcv_buffer[buffer_hash]['num_segments_max_rec'], self._rcv_buffer[buffer_hash]['num_segments'] - self._rcv_buffer[buffer_hash]['next_packet'] )
-            next_packet_to_be_sent = self._rcv_buffer[buffer_hash]['next_packet'] + 1
+            number_of_packets_that_can_be_sent = min( self._rcv_buffer[buffer_hash]['num_segments_max_rec'], self._rcv_buffer[buffer_hash]['num_segments'] - self._rcv_buffer[buffer_hash]['next_cts_border'] )
+            next_packet_to_be_sent = self._rcv_buffer[buffer_hash]['next_cts_border'] + 1
             self.__send_tp_cts(dest_address, src_address, session_num, number_of_packets_that_can_be_sent, next_packet_to_be_sent, self._rcv_buffer[buffer_hash]['pgn'])
 
             # calculate next packet number at which a CTS is to be sent
-            self._rcv_buffer[buffer_hash]['next_packet'] = min(self._rcv_buffer[buffer_hash]['next_packet'] + self._rcv_buffer[buffer_hash]['num_segments_max_rec'],
+            self._rcv_buffer[buffer_hash]['next_cts_border'] = min(self._rcv_buffer[buffer_hash]['next_cts_border'] + self._rcv_buffer[buffer_hash]['num_segments_max_rec'],
                                                                self._rcv_buffer[buffer_hash]['num_segments'])
 
             self._rcv_buffer[buffer_hash]['deadline'] = time.time() + self.Timeout.T2
@@ -705,7 +716,7 @@ class J1939_22:
         pgn = ParameterGroupNumber(0, (ParameterGroupNumber.PGN.FD_TP_DT>>8) & 0xFF, dest_address)
         mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
 
-        data.insert(0, (session_num & 0xF) | ((Dtfi & 0xF) >> 4))
+        data.insert(0, (Dtfi & 0xF) | ((session_num & 0xF) << 4))
         data.insert(1,  segment_num & 0xFF)
         data.insert(2, (segment_num >> 8) & 0xFF)
         data.insert(3, (segment_num >> 16) & 0xFF)
