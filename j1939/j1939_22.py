@@ -171,9 +171,8 @@ class J1939_22:
                 cpgn = pgn.value
                 dst_address = ParameterGroupNumber.Address.GLOBAL
 
-            # create and insert service header
-            service_header = (tos & 0x7) | ((trailer_format & 0x7) << 3) | ((cpgn & 0x3FFFF) << 6) | ((data_length & 0xFF) << 24)
-            cpg = {'priority': priority, 'service_header': service_header, 'data': data.copy()}
+            # create header dict
+            cpg = {'priority': (priority & 0x7), 'tos': (tos & 0x7), 'tf': (trailer_format & 0x7), 'cpgn': (cpgn & 0x3FFFF), 'data_length': data_length, 'data': data.copy()}
 
             # send immediately
             if time_limit == 0:
@@ -285,10 +284,10 @@ class J1939_22:
         data = []
         for cpg in cpg_list:
             priority = min(cpg['priority'], priority)
-            data.append( cpg['service_header']        & 0xFF)
-            data.append((cpg['service_header'] >>  8) & 0xFF)
-            data.append((cpg['service_header'] >> 16) & 0xFF)
-            data.append((cpg['service_header'] >> 24) & 0xFF)
+            data.append( (cpg['tos'] << 5) | (cpg['tf'] << 2) | ((cpg['cpgn'] >> 16) & 0x3) )
+            data.append( ((cpg['cpgn'] >> 8) & 0xFF) )
+            data.append( (cpg['cpgn'] & 0xFF) )
+            data.append( cpg['data_length'] )
             data.extend( cpg['data'])
 
         # padding
@@ -647,15 +646,14 @@ class J1939_22:
         while True:
             if len(data) <= 4:
                 break
-            service_header = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24)
-            tos            =  service_header        & 0x7
+            tos            = (data[0] >> 5) & 0x7
             # padding service
             if tos == 0:
                 break
 
-            trailer_format = (service_header >> 3)  & 0x7
-            cpgn           = (service_header >> 6)  & 0x3FFFF
-            payload_length = (service_header >> 24) & 0xFF
+            trailer_format = (data[0] >> 2) & 0x7
+            cpgn           = ((data[0] & 0x3) << 16) | (data[1] << 8)  | data[2]
+            payload_length = (data[3] & 0xFF)
             if (tos == 2) and (trailer_format == 0):
                 # SAE J1939 with no assurance data
                 self.__notify_subscribers(mid.priority, cpgn, src_address, dest_address, timestamp, data[4:(4+payload_length)].copy())
