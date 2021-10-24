@@ -42,3 +42,10 @@ class MessageId:
         self.source_address = can_id & 0xFF
         self.parameter_group_number = (can_id >> 8) & 0x3FFFF
         self.priority = (can_id >> 26) & 0x7
+
+
+class FrameFormat:
+    CBFF    = 0     # classical          base       frame format
+    CEFF    = 1     # classical          extended   frame format
+    FBFF    = 2     # flexible data rate base       frame format
+    FEFF    = 3     # flexible data rate extended   frame format

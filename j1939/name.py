@@ -113,14 +113,32 @@ class Name:
             self.bytes = kwargs['bytes']
         else:
             self.arbitrary_address_capable = kwargs.get('arbitrary_address_capable', False)
+            if (self.arbitrary_address_capable < 0) or (self.arbitrary_address_capable > 1):
+                raise ValueError("Length of arbitrary address capable incorrect")
             self.industry_group = kwargs.get('industry_group', Name.IndustryGroup.Global)
+            if (self.industry_group < 0) or (self.industry_group > ((2 ** 3) - 1)):
+                raise ValueError("Length of industry group incorrect")
             self.vehicle_system_instance = kwargs.get('vehicle_system_instance', 0)
+            if (self.vehicle_system_instance < 0) or (self.vehicle_system_instance > ((2 ** 4) - 1)):
+                raise ValueError("Length of vehicle system instance incorrect")
             self.vehicle_system = kwargs.get('vehicle_system', 0)
+            if (self.vehicle_system < 0) or (self.vehicle_system > ((2 ** 7) - 1)):
+                raise ValueError("Length of vehicle system incorrect")
             self.function = kwargs.get('function', 0)
+            if (self.function < 0) or (self.function > ((2 ** 8) - 1)):
+                raise ValueError("Length of function incorrect")
             self.function_instance = kwargs.get('function_instance', 0)
+            if (self.function_instance < 0) or (self.function_instance > ((2 ** 5) - 1)):
+                raise ValueError("Length of function instance incorrect")
             self.ecu_instance = kwargs.get('ecu_instance', 0)
+            if (self.ecu_instance < 0) or (self.ecu_instance > ((2 ** 3) - 1)):
+                raise ValueError("Length of ecu instance incorrect")
             self.manufacturer_code = kwargs.get('manufacturer_code', 0)
+            if (self.manufacturer_code < 0) or (self.manufacturer_code > ((2 ** 11) - 1)):
+                raise ValueError("Length of manufacturer code incorrect")
             self.identity_number = kwargs.get('identity_number', 0)
+            if (self.identity_number < 0) or (self.identity_number > ((2 ** 21) - 1)):
+                raise ValueError("Length of identity number incorrect")
 
         self.reserved_bit = 0
 
@@ -221,6 +239,7 @@ class Name:
     @value.setter
     def value(self, value):
         self.identity_number = value & ((2 ** 21) - 1)
+        print(value, self.identity_number )
         self.manufacturer_code = (value >> 21) & ((2 ** 11) - 1)
         self.ecu_instance = (value >> 32) & ((2 ** 3) - 1)
         self.function_instance = (value >> 35) & ((2 ** 5) - 1)
