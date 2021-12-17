@@ -266,4 +266,4 @@ class Name:
 
     @bytes.setter
     def bytes(self, value):
-        self.value = int("".join("%.2X" % _byte for _byte in value), 16)
+        self.value = int.from_bytes(value, byteorder='little', signed=False)
