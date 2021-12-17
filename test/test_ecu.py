@@ -104,10 +104,8 @@ class TestECU(unittest.TestCase):
         self.message_queue = queue.Queue()
         self.message_thread = threading.Thread(target=self._async_can_feeder)
         self.message_thread.start()
-        
-        self.ecu = j1939.ElectronicControlUnit()
         # redirect the send_message from the can bus to our simulation
-        self.ecu.send_message = self._send_message
+        self.ecu = j1939.ElectronicControlUnit(send_message=self._send_message)
         # install a fake-CA to accept all messages
         ca = AcceptAllCA(None)
         self.ecu.add_ca(controller_application = ca)

@@ -16,11 +16,14 @@ class ElectronicControlUnit:
     """ElectronicControlUnit (ECU) holding one or more ControllerApplications (CAs)."""
 
 
-    def __init__(self, data_link_layer='j1939-21', max_cmdt_packets=1, minimum_tp_rts_cts_dt_interval=None, minimum_tp_bam_dt_interval=None):
+    def __init__(self, data_link_layer='j1939-21', max_cmdt_packets=1, minimum_tp_rts_cts_dt_interval=None, minimum_tp_bam_dt_interval=None, send_message=None):
         """
         :param data_link_layer:
             specify data-link-layer, 'j1939-21' or 'j1939-22'
         """
+        if send_message:
+            self.send_message = send_message
+
         #: A python-can :class:`can.BusABC` instance
         self._bus = None
         # Locking object for send
