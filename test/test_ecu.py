@@ -266,7 +266,7 @@ class TestECU(unittest.TestCase):
         Its length is 20 Bytes.
         """
         self.can_messages = [
-            (TestECU.MsgType.CANTX, 0x18EC9B90, [16, 20, 0, 3, 255, 0, 223, 0], 0.0),        # TP.CM RTS 1
+            (TestECU.MsgType.CANTX, 0x18EC9B90, [16, 20, 0, 3, 1, 0, 223, 0], 0.0),          # TP.CM RTS 1
             (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 1, 255, 255, 0, 223, 0], 0.0),       # TP.CM CTS 1
             (TestECU.MsgType.CANTX, 0x1CEB9B90, [1, 1, 2, 3, 4, 5, 6, 7], 0.0),              # TP.DT 1
             (TestECU.MsgType.CANRX, 0x1CEC909B, [17, 1, 2, 255, 255, 0, 223, 0], 0.0),       # TP.CM CTS 2
