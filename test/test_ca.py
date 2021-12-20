@@ -105,7 +105,7 @@ class TestCA(unittest.TestCase):
         address of 128.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 54, 83], 0.0),    # Address Claimed
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
         ]
 
         name = j1939.Name(
@@ -139,9 +139,9 @@ class TestCA(unittest.TestCase):
         with a veto and we lose our address.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 54, 83], 0.0),    # Address Claimed
-            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 111, 54, 83], 0.0),    # Veto from Counterpart with lower name
-            (TestCA.MsgType.CANTX, 0x18EEFFFE, [135, 214, 82, 83, 130, 201, 54, 83], 0.0),    # CANNOT CLAIM
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
+            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 111, 254, 82], 0.0),    # Veto from Counterpart with lower name
+            (TestCA.MsgType.CANTX, 0x18EEFFFE, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # CANNOT CLAIM
         ]
 
         name = j1939.Name(
@@ -175,9 +175,9 @@ class TestCA(unittest.TestCase):
         with a veto, but our name is less.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 54, 83], 0.0),    # Address Claimed
-            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 222, 54, 83], 0.0),    # Veto from Counterpart with higher name
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 54, 83], 0.0),    # resend Address Claimed
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
+            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 222, 254, 82], 0.0),    # Veto from Counterpart with higher name
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # resend Address Claimed
         ]
 
         name = j1939.Name(
@@ -212,9 +212,9 @@ class TestCA(unittest.TestCase):
         (129) automatically.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 54, 211], 0.0),    # Address Claimed 128
-            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 111, 54, 83], 0.0),     # Veto from Counterpart with lower name
-            (TestCA.MsgType.CANTX, 0x18EEFF81, [135, 214, 82, 83, 130, 201, 54, 211], 0.0),    # Address Claimed 129
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 210], 0.0),    # Address Claimed 128
+            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 111, 254, 82], 0.0),     # Veto from Counterpart with lower name
+            (TestCA.MsgType.CANTX, 0x18EEFF81, [135, 214, 82, 83, 130, 201, 254, 210], 0.0),    # Address Claimed 129
         ]
 
         name = j1939.Name(
