@@ -34,9 +34,9 @@ class ElectronicControlUnit:
 
         # set data link layer
         if data_link_layer == 'j1939-21':
-            self.j1939_dll = J1939_21(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval)
+            self.j1939_dll = J1939_21(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
         elif data_link_layer == 'j1939-22':
-            self.j1939_dll = J1939_22(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval)
+            self.j1939_dll = J1939_22(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
         else:
             raise ValueError("either 'j1939-21' or 'j1939-22' must be provided for data link layer")
 
@@ -136,11 +136,10 @@ class ElectronicControlUnit:
         :param callback:
             Function to call when message is received.
         :param int device_address:
-            Device address of the application
-            The address which the message is intended
-
-            if device_address is set to None or not entered, each message is received
-            (except: TP.CMDT is only received if the destination address is bound to a controller application)
+            Device address of the application.
+            This is a simple way for peer-to-peer reception without adding a controller-application.
+            Only one device address can be entered. Multiple device addresses are only possible with controller applications.
+            Note: TP.CMDT will only be received if the destination address is bound to a controller application.
         """
         self._subscribers.append({'cb': callback, 'dev_adr':device_address})
 
@@ -334,6 +333,12 @@ class ElectronicControlUnit:
         for dic in self._subscribers:
             if (dic['dev_adr'] == None) or (dest == ParameterGroupNumber.Address.GLOBAL) or (callable(dic['dev_adr']) and dic['dev_adr'](dest)) or (dest == dic['dev_adr']):
                 dic['cb'](priority, pgn, sa, timestamp, data)
+
+    def _is_message_acceptable(self, dest):
+        for dic in self._subscribers:
+            if dic['dev_adr'] == dest:
+                return True
+        return False
 
 class MessageListener(Listener):
     """Listens for messages on CAN bus and feeds them to an ECU instance.

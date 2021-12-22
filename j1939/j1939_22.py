@@ -57,7 +57,7 @@ class J1939_22:
         AccessDenied = 2
         CannotRespond = 3
 
-    def __init__(self, send_message, job_thread_wakeup, notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval):
+    def __init__(self, send_message, job_thread_wakeup, notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, ecu_is_message_acceptable):
         # Receive buffers
         self._rcv_buffer = {}
         # Send buffers
@@ -99,6 +99,7 @@ class J1939_22:
         self.__job_thread_wakeup = job_thread_wakeup
         self.__send_message = send_message
         self.__notify_subscribers = notify_subscribers
+        self.__ecu_is_message_acceptable = ecu_is_message_acceptable
 
     def add_ca(self, ca):
         self._cas.append(ca)
@@ -763,13 +764,14 @@ class J1939_22:
 
         # iterate all CAs to check if we have to handle this destination address
         if dest_address != ParameterGroupNumber.Address.GLOBAL:
-            reject = True
-            for ca in self._cas:
-                if ca.message_acceptable(dest_address):
-                    reject = False
-                    break
-            if reject == True:
-                return
+            if not self.__ecu_is_message_acceptable(dest_address): # simple peer-to-peer reception without adding a controller-application
+                reject = True
+                for ca in self._cas:
+                    if ca.message_acceptable(dest_address):
+                        reject = False
+                        break
+                if reject == True:
+                    return
 
         if pgn_value == ParameterGroupNumber.PGN.FEFF_MULTI_PG:
             self._process_multi_pg(mid, dest_address, data, timestamp)
