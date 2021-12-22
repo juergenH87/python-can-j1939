@@ -574,8 +574,11 @@ class J1939_22:
             self.__job_thread_wakeup()
 
         elif control_byte == self.TpControlType.ABORT:
-            # TODO
-            pass
+            # if abort received before transmission established -> cancel transmission
+            buffer_hash = self._buffer_hash(session_num, dest_address, src_address)
+            if buffer_hash in self._snd_buffer and self._snd_buffer[buffer_hash]['state'] == self.SendBufferState.WAITING_CTS:
+                del self._snd_buffer[buffer_hash] # cancel transmission
+            # TODO: any more abort responses?
         else:
             raise RuntimeError('Received TP.CM with unknown control_byte %d', control_byte)
 
