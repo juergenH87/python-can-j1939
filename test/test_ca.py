@@ -50,7 +50,7 @@ class TestCA(unittest.TestCase):
         expected_data = self.can_messages.pop(0)
         self.assertEqual(expected_data[0], TestCA.MsgType.CANTX, "No transmission was expected")
         self.assertEqual(can_id, expected_data[1])
-        self.assertSequenceEqual(data[::-1], expected_data[2])
+        self.assertSequenceEqual(data, expected_data[2])
         self._inject_messages_into_ecu()
 
     def _on_message(self, pgn, data):
@@ -64,7 +64,7 @@ class TestCA(unittest.TestCase):
         expected_data = self.pdus.pop(0)
         self.assertEqual(expected_data[0], TestCA.MsgType.PDU)
         self.assertEqual(pgn, expected_data[1])
-        self.assertSequenceEqual(data[::-1], expected_data[2])
+        self.assertSequenceEqual(data, expected_data[2])
 
     def setUp(self):
         """Called before each test methode.
@@ -80,10 +80,8 @@ class TestCA(unittest.TestCase):
         self.message_queue = queue.Queue()
         self.message_thread = threading.Thread(target=self._async_can_feeder)
         self.message_thread.start()
-        
-        self.ecu = j1939.ElectronicControlUnit()
         # redirect the send_message from the can bus to our simulation
-        self.ecu.send_message = self._send_message
+        self.ecu = j1939.ElectronicControlUnit(send_message=self._send_message)
 
     def tearDown(self):
         """Called after each test methode.
@@ -107,14 +105,14 @@ class TestCA(unittest.TestCase):
         address of 128.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [83, 54, 201, 130, 83, 82, 214, 135], 0.0),    # Address Claimed
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
         ]
 
         name = j1939.Name(
             arbitrary_address_capable=0, 
             industry_group=j1939.Name.IndustryGroup.Industrial,
             vehicle_system_instance=2,
-            vehicle_system=155,
+            vehicle_system=127,
             function=201,
             function_instance=16,
             ecu_instance=2,
@@ -141,16 +139,16 @@ class TestCA(unittest.TestCase):
         with a veto and we lose our address.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [83, 54, 201, 130, 83, 82, 214, 135], 0.0),    # Address Claimed
-            (TestCA.MsgType.CANRX, 0x18EEFF80, [83, 54, 111, 130, 83, 82, 214, 135], 0.0),    # Veto from Counterpart with lower name
-            (TestCA.MsgType.CANTX, 0x18EEFFFE, [83, 54, 201, 130, 83, 82, 214, 135], 0.0),    # CANNOT CLAIM
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
+            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 111, 254, 82], 0.0),    # Veto from Counterpart with lower name
+            (TestCA.MsgType.CANTX, 0x18EEFFFE, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # CANNOT CLAIM
         ]
 
         name = j1939.Name(
             arbitrary_address_capable=0, 
             industry_group=j1939.Name.IndustryGroup.Industrial,
             vehicle_system_instance=2,
-            vehicle_system=155,
+            vehicle_system=127,
             function=201,
             function_instance=16,
             ecu_instance=2,
@@ -177,16 +175,16 @@ class TestCA(unittest.TestCase):
         with a veto, but our name is less.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [83, 54, 201, 130, 83, 82, 214, 135], 0.0),    # Address Claimed
-            (TestCA.MsgType.CANRX, 0x18EEFF80, [83, 54, 222, 130, 83, 82, 214, 135], 0.0),    # Veto from Counterpart with higher name
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [83, 54, 201, 130, 83, 82, 214, 135], 0.0),    # resend Address Claimed
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
+            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 222, 254, 82], 0.0),    # Veto from Counterpart with higher name
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # resend Address Claimed
         ]
 
         name = j1939.Name(
             arbitrary_address_capable=0, 
             industry_group=j1939.Name.IndustryGroup.Industrial,
             vehicle_system_instance=2,
-            vehicle_system=155,
+            vehicle_system=127,
             function=201,
             function_instance=16,
             ecu_instance=2,
@@ -214,16 +212,16 @@ class TestCA(unittest.TestCase):
         (129) automatically.
         """
         self.can_messages = [
-            (TestCA.MsgType.CANTX, 0x18EEFF80, [211, 54, 201, 130, 83, 82, 214, 135], 0.0),    # Address Claimed 128
-            (TestCA.MsgType.CANRX, 0x18EEFF80, [83, 54, 111, 130, 83, 82, 214, 135], 0.0),     # Veto from Counterpart with lower name
-            (TestCA.MsgType.CANTX, 0x18EEFF81, [211, 54, 201, 130, 83, 82, 214, 135], 0.0),    # Address Claimed 129
+            (TestCA.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 210], 0.0),    # Address Claimed 128
+            (TestCA.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 111, 254, 82], 0.0),     # Veto from Counterpart with lower name
+            (TestCA.MsgType.CANTX, 0x18EEFF81, [135, 214, 82, 83, 130, 201, 254, 210], 0.0),    # Address Claimed 129
         ]
 
         name = j1939.Name(
             arbitrary_address_capable=1, 
             industry_group=j1939.Name.IndustryGroup.Industrial,
             vehicle_system_instance=2,
-            vehicle_system=155,
+            vehicle_system=127,
             function=201,
             function_instance=16,
             ecu_instance=2,
