@@ -53,19 +53,6 @@ class TestCA(unittest.TestCase):
         self.assertSequenceEqual(data, expected_data[2])
         self._inject_messages_into_ecu()
 
-    def _on_message(self, pgn, data):
-        """Feed incoming message to this testcase.
-
-        :param int pgn:
-            Parameter Group Number of the message
-        :param bytearray data:
-            Data of the PDU
-        """
-        expected_data = self.pdus.pop(0)
-        self.assertEqual(expected_data[0], TestCA.MsgType.PDU)
-        self.assertEqual(pgn, expected_data[1])
-        self.assertSequenceEqual(data, expected_data[2])
-
     def setUp(self):
         """Called before each test methode.
         Method called to prepare the test fixture. This is called immediately 
@@ -73,8 +60,6 @@ class TestCA(unittest.TestCase):
         any exception raised by this method will be considered an error rather 
         than a test failure. The default implementation does nothing.
         """
-        self.can_messages = []
-        self.pdus = []
         self.STOP_THREAD = object()
 
         self.message_queue = queue.Queue()
