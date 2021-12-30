@@ -33,5 +33,5 @@ jobs:
 
       # Runs a single command using the runners shell
       - name: Run tests
-        run: echo python setup.py test
+        run: python setup.py test
 
