@@ -33,12 +33,9 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      - name: create venv
-        run: python -m venv venv
-
       - name: install dependencies
-        run: venv/bin/pip install .
+        run: pip install .
 
       - name: Run tests
-        run: venv/bin/pytest . --pyargs
+        run: pytest . --pyargs
 
