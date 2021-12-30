@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: install dependencies
-        run: pip install .
+        run: pip3 install .
 
       - name: Run tests
         run: pytest . --pyargs
