@@ -5,6 +5,20 @@ import threading
 
 import j1939
 
+class AcceptAllCA(j1939.ControllerApplication):
+    """CA to accept all messages"""
+
+    def __init__(self, name, device_address_preferred=None):
+        # old fashion calling convention for compatibility with Python2
+        j1939.ControllerApplication.__init__(self, name, device_address_preferred)
+
+    def message_acceptable(self, dest_address):
+        """Indicates if this CA would accept a message
+        (OVERLOADED FUNCTION)        
+        This function indicates the acceptance of this CA for the given dest_address.
+        """
+        return True
+
 
 class Feeder:
     """
@@ -58,6 +72,56 @@ class Feeder:
         assert can_id == expected_data[1]
         assert data == expected_data[2]
         self._inject_messages_into_ecu()
+
+    def _on_message(self, priority, pgn, sa, timestamp, data):
+        """Feed incoming message to this testcase.
+    
+        :param int priority:
+            Priority of the message
+        :param int pgn:
+            Parameter Group Number of the message
+        :param sa:
+            Source Address of the message
+        :param timestamp:
+            Timestamp of the message
+        :param bytearray data:
+            Data of the PDU
+        """
+        expected_data = self.pdus.pop(0)
+        assert expected_data[0] == Feeder.MsgType.PDU
+        assert pgn == expected_data[1]
+        if isinstance(data, list):
+            assert data == expected_data[2]
+        else:
+            assert data is None
+
+    def accept_all_messages(self):
+        # install a fake-CA to accept all messages
+        ca = AcceptAllCA(None)
+        self.ecu.add_ca(controller_application = ca)
+
+    def receive(self):
+        self.ecu.subscribe(self._on_message)
+        self._inject_messages_into_ecu()
+        # wait until all messages are processed asynchronously
+        while len(self.pdus)>0:
+            time.sleep(0.500)
+        # wait for final processing    
+        time.sleep(0.100)
+        self.ecu.unsubscribe(self._on_message)
+
+    def send(self, pdu, source, destination):
+        self.ecu.subscribe(self._on_message)
+    
+        # sending from 240 to 155 with prio 6
+        self.ecu.send_pgn(0, pdu[1]>>8, destination, 6, source, pdu[2])
+        
+        # wait until all messages are processed asynchronously
+        while len(self.can_messages)>0:
+            time.sleep(0.500)
+        # wait for final processing    
+        time.sleep(0.100)
+        self.ecu.unsubscribe(self._on_message)
 
     def stop(self):
         self.ecu.stop()
