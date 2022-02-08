@@ -239,7 +239,6 @@ class Name:
     @value.setter
     def value(self, value):
         self.identity_number = value & ((2 ** 21) - 1)
-        print(value, self.identity_number )
         self.manufacturer_code = (value >> 21) & ((2 ** 11) - 1)
         self.ecu_instance = (value >> 32) & ((2 ** 3) - 1)
         self.function_instance = (value >> 35) & ((2 ** 5) - 1)
