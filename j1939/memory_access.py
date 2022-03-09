@@ -1,5 +1,6 @@
 from enum import Enum
 import queue
+import sys
 import time
 
 import j1939
@@ -51,9 +52,13 @@ class Dm14Query:
 
     def _wait_for_data(self):
         assert self.state is QueryState.WAIT_FOR_SEED
-        self.state = QueryState.WAIT_FOR_DM16
-        self._ca.unsubscribe(self._parse_dm15)
-        self._ca.subscribe(self._parse_dm16)
+        if self.command is Command.WRITE:
+            self._send_dm16()
+            self.state = QueryState.WAIT_FOR_OPER_COMPLETE
+        else:
+            self.state = QueryState.WAIT_FOR_DM16
+            self._ca.unsubscribe(self._parse_dm15)
+            self._ca.subscribe(self._parse_dm16)
 
     def _send_operation_complete(self):
         self.length = 1
@@ -74,6 +79,17 @@ class Dm14Query:
             i = i + 1
         data[6] = key_or_user_level & 0xFF
         data[7] = key_or_user_level >> 8
+        self._ca.send_pgn(
+            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
+        )
+
+    def _send_dm16(self):
+        self._pgn = j1939.ParameterGroupNumber.PGN.DM16
+        data = [0xFF] * 8
+        byte_count = len(self.bytes)
+        data[0] = 0xFF if byte_count > 7 else byte_count
+        for i in range(byte_count):
+            data[i + 1] = self.bytes[i]
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
         )
@@ -116,6 +132,14 @@ class Dm14Query:
         self._ca.subscribe(self._parse_dm15)
         self.state = QueryState.WAIT_FOR_OPER_COMPLETE
 
+    def _values_to_bytes(self, values):
+        bytes = []
+        for val in values:
+            bits = (val.bit_length() + 7) // 8
+            bytes.extend(val.to_bytes(bits, byteorder="little"))
+        return bytes
+
+
     def read(self, dest_address, direct, address, length):
         assert length > 0
         self._dest_address = dest_address
@@ -129,8 +153,20 @@ class Dm14Query:
         # wait for DM16 reply
         return self.data_queue.get(block=True, timeout=1)
 
-    def write(self, direct, address, data):
-        pass
+    def write(self, dest_address, direct, address, values):
+        self._dest_address = dest_address
+        self.direct = direct
+        self.address = address
+        self.command = Command.WRITE
+        self.bytes = self._values_to_bytes(values)
+        self.length = len(values)
+        self._ca.subscribe(self._parse_dm15)
+        self._send_dm14(7)
+        self.state = QueryState.WAIT_FOR_SEED
+
+    def set_seed_key_algorithm(self, algorithm):
+        self._seed_from_key = algorithm
+
 
     def set_seed_key_algorithm(self, algorithm):
         self._seed_from_key = algorithm
