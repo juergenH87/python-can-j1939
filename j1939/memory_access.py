@@ -102,6 +102,7 @@ class Dm14Query:
         status = (data[1] >> 1) & 7
         if status is Dm15Status.BUSY.value or status is Dm15Status.OPERATION_FAILED:
             error = int.from_bytes(data[2:4], byteorder="little", signed=False)
+            self.data_queue.put(None)
             if error == 0x1000:
                 raise RuntimeError("Key authentication error")
             else:  # TODO parse error codes more granularly
@@ -120,6 +121,7 @@ class Dm14Query:
                 if self._seed_from_key is not None:
                     self._send_dm14(self._seed_from_key(seed))
                 else:
+                    self.data_queue.put(None)
                     raise RuntimeError(
                         "Key requested from host but no seed-key algorithm has been provided"
                     )
