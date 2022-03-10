@@ -112,6 +112,7 @@ class Dm14Query:
             if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
                 assert status is Command.OPERATION_COMPLETED.value
                 self._send_operation_complete()
+                self.state = QueryState.IDLE
             else:
                 assert self.state is QueryState.WAIT_FOR_SEED
                 if self._seed_from_key is not None:
