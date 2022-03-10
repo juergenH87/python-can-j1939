@@ -49,6 +49,7 @@ class Dm14Query:
         self.state = QueryState.IDLE
         self._seed_from_key = None
         self.data_queue = queue.Queue()
+        self.mem_data = None
 
     def _wait_for_data(self):
         assert self.state is QueryState.WAIT_FOR_SEED
@@ -113,6 +114,7 @@ class Dm14Query:
                 assert status is Command.OPERATION_COMPLETED.value
                 self._send_operation_complete()
                 self.state = QueryState.IDLE
+                self.data_queue.put(self.mem_data)
             else:
                 assert self.state is QueryState.WAIT_FOR_SEED
                 if self._seed_from_key is not None:
@@ -127,8 +129,7 @@ class Dm14Query:
             return
         length = min(data[0], len(data) - 1)
         # assert length == self.length
-        mem_data = data[1 : length + 1]
-        self.data_queue.put(mem_data)
+        self.mem_data = data[1 : length + 1]
         self._ca.unsubscribe(self._parse_dm16)
         self._ca.subscribe(self._parse_dm15)
         self.state = QueryState.WAIT_FOR_OPER_COMPLETE
@@ -151,7 +152,7 @@ class Dm14Query:
         self._ca.subscribe(self._parse_dm15)
         self._send_dm14(7)
         self.state = QueryState.WAIT_FOR_SEED
-        # wait for DM16 reply
+        # wait for operation completed DM15 message
         return self.data_queue.get(block=True, timeout=1)
 
     def write(self, dest_address, direct, address, values):
@@ -164,6 +165,12 @@ class Dm14Query:
         self._ca.subscribe(self._parse_dm15)
         self._send_dm14(7)
         self.state = QueryState.WAIT_FOR_SEED
+        # wait for operation completed DM15 message
+        try:
+            self.data_queue.get(block=True, timeout=1)
+        except queue.Empty:
+            pass #expect empty queue for write 
+
 
     def set_seed_key_algorithm(self, algorithm):
         self._seed_from_key = algorithm
