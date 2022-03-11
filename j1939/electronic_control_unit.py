@@ -229,7 +229,7 @@ class ElectronicControlUnit:
 
         if not self._bus:
             raise RuntimeError("Not connected to CAN bus")
-        msg = can.Message(extended_id=True,
+        msg = can.Message(is_extended_id=True,
                           arbitration_id=can_id,
                           data=data,
                           is_fd=fd_format,
