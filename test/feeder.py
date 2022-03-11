@@ -73,10 +73,7 @@ class Feeder:
             f'send message ID: {can_id:04x}, data:   {["{:02x}".format(val) for val in data]}'
         )
         expected_data = self.can_messages.pop(0)
-        assert (
-            expected_data[0] == Feeder.MsgType.CANTX,
-            "No transmission was expected",
-        )
+        assert expected_data[0] == Feeder.MsgType.CANTX
         assert can_id == expected_data[1]
         assert data == expected_data[2]
         self._inject_messages_into_ecu()
