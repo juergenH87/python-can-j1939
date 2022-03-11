@@ -1,3 +1,4 @@
+import logging
 import queue
 import threading
 import time
@@ -5,6 +6,8 @@ import time
 import j1939
 from j1939.message_id import MessageId
 from j1939.parameter_group_number import ParameterGroupNumber
+
+logger = logging.getLogger(__name__)
 
 
 class AcceptAllCA(j1939.ControllerApplication):
@@ -66,6 +69,9 @@ class Feeder:
         Checks the message sent and generates the apropriate answer.
         The data is fed from self.can_messages.
         """
+        logger.info(
+            f'send message ID: {can_id:04x}, data:   {["{:02x}".format(val) for val in data]}'
+        )
         expected_data = self.can_messages.pop(0)
         assert (
             expected_data[0] == Feeder.MsgType.CANTX,
@@ -89,6 +95,9 @@ class Feeder:
         :param bytearray data:
             Data of the PDU
         """
+        logger.info(
+            f'received from sa {sa:02x} pgn {pgn:04x} data: {["{:02x}".format(val) for val in data]}'
+        )
         expected_data = self.pdus.pop(0)
         assert expected_data[0] == Feeder.MsgType.PDU
         assert pgn == expected_data[1]
