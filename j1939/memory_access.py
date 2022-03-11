@@ -141,7 +141,6 @@ class Dm14Query:
             bytes.extend(val.to_bytes(bits, byteorder="little"))
         return bytes
 
-
     def read(self, dest_address, direct, address, length):
         assert length > 0
         self._dest_address = dest_address
@@ -169,8 +168,7 @@ class Dm14Query:
         try:
             self.data_queue.get(block=True, timeout=1)
         except queue.Empty:
-            pass #expect empty queue for write 
-
+            pass  # expect empty queue for write
 
     def set_seed_key_algorithm(self, algorithm):
         self._seed_from_key = algorithm
