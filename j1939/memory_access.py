@@ -69,28 +69,26 @@ class Dm14Query:
     def _send_dm14(self, key_or_user_level):
         self._pgn = j1939.ParameterGroupNumber.PGN.DM14
         pointer = self.address.to_bytes(length=4, byteorder="little")
-        data = [0xFF] * 8
-        data[0] = self.length
-        data[1] = (
+        data = []
+        data.append(self.length)
+        data.append(
             (self.direct << 4) + (self.command.value << 1) + 1
         )  # (SAE reserved = 1)
-        i = 2
         for octet in pointer:
-            data[i] = octet
-            i = i + 1
-        data[6] = key_or_user_level & 0xFF
-        data[7] = key_or_user_level >> 8
+            data.append(octet)
+        data.append(key_or_user_level & 0xFF)
+        data.append(key_or_user_level >> 8)
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
         )
 
     def _send_dm16(self):
         self._pgn = j1939.ParameterGroupNumber.PGN.DM16
-        data = [0xFF] * 8
+        data = []
         byte_count = len(self.bytes)
-        data[0] = 0xFF if byte_count > 7 else byte_count
+        data.append(0xFF if byte_count > 7 else byte_count)
         for i in range(byte_count):
-            data[i + 1] = self.bytes[i]
+            data.append(self.bytes[i])
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
         )
