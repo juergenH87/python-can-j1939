@@ -62,7 +62,7 @@ class Dm14Query:
             self._ca.subscribe(self._parse_dm16)
 
     def _send_operation_complete(self):
-        self.length = 1
+        self.object_count = 1
         self.command = Command.OPERATION_COMPLETED
         self._send_dm14(0xFFFF)
 
@@ -70,7 +70,7 @@ class Dm14Query:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM14
         pointer = self.address.to_bytes(length=4, byteorder="little")
         data = []
-        data.append(self.length)
+        data.append(self.object_count)
         data.append(
             (self.direct << 4) + (self.command.value << 1) + 1
         )  # (SAE reserved = 1)
@@ -106,7 +106,7 @@ class Dm14Query:
             else:  # TODO parse error codes more granularly
                 raise RuntimeError(f"Device {sa} busy")
         length = data[0]
-        if seed == 0xFFFF and length == self.length:
+        if seed == 0xFFFF and length == self.object_count:
             self._wait_for_data()
         else:
             if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
@@ -128,7 +128,7 @@ class Dm14Query:
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self._dest_address:
             return
         length = min(data[0], len(data) - 1)
-        # assert length == self.length
+        # assert object_count == self.object_count
         self.mem_data = data[1 : length + 1]
         self._ca.unsubscribe(self._parse_dm16)
         self._ca.subscribe(self._parse_dm15)
@@ -137,30 +137,58 @@ class Dm14Query:
     def _values_to_bytes(self, values):
         bytes = []
         for val in values:
-            bits = (val.bit_length() + 7) // 8
-            bytes.extend(val.to_bytes(bits, byteorder="little"))
+            bytes.extend(val.to_bytes(self.object_byte_size, byteorder="little"))
         return bytes
 
-    def read(self, dest_address, direct, address, length):
-        assert length > 0
+    def _bytes_to_values(self, raw_bytes):
+        values = []
+        for i in range(len(raw_bytes) // self.object_byte_size):
+            values.append(
+                int.from_bytes(
+                    raw_bytes[i : self.object_byte_size - 1],
+                    byteorder="little",
+                    signed=self.signed,
+                )
+            )
+        return values
+
+    def read(
+        self,
+        dest_address,
+        direct,
+        address,
+        object_count,
+        object_byte_size=1,
+        signed=False,
+        return_raw_bytes=False,
+    ):
+        assert object_count > 0
         self._dest_address = dest_address
         self.direct = direct
         self.address = address
-        self.length = length
+        self.object_count = object_count
+        self.object_byte_size = object_byte_size
+        self.signed = signed
+        self.return_raw_bytes = return_raw_bytes
         self.command = Command.READ
         self._ca.subscribe(self._parse_dm15)
         self._send_dm14(7)
         self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
-        return self.data_queue.get(block=True, timeout=1)
+        raw_bytes = self.data_queue.get(block=True, timeout=1)
+        if self.return_raw_bytes:
+            return raw_bytes
+        else:
+            return self._bytes_to_values(raw_bytes)
 
-    def write(self, dest_address, direct, address, values):
+    def write(self, dest_address, direct, address, values, object_byte_size=1):
         self._dest_address = dest_address
         self.direct = direct
         self.address = address
+        self.object_byte_size = object_byte_size
         self.command = Command.WRITE
         self.bytes = self._values_to_bytes(values)
-        self.length = len(values)
+        self.object_count = len(values)
         self._ca.subscribe(self._parse_dm15)
         self._send_dm14(7)
         self.state = QueryState.WAIT_FOR_SEED
@@ -172,7 +200,6 @@ class Dm14Query:
 
     def set_seed_key_algorithm(self, algorithm):
         self._seed_from_key = algorithm
-
 
     def set_seed_key_algorithm(self, algorithm):
         self._seed_from_key = algorithm
