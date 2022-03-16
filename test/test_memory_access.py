@@ -84,7 +84,7 @@ def test_dm14_write(feeder, expected_messages):
     dm14 = j1939.Dm14Query(ca)
     dm14.set_seed_key_algorithm(key_from_seed)
     values = [0x11223344]
-    dm14.write(0xD4, 1, 0x91000007, values)
+    dm14.write(0xD4, 1, 0x91000007, values, object_byte_size=4)
 
     feeder.process_messages()
 
