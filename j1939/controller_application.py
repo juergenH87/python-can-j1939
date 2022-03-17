@@ -32,18 +32,25 @@ class ControllerApplication:
         MAX_16 = 0xFAFF
         MAX_16_ARR = [0xFA, 0xFF]
 
-    def __init__(self, name, device_address_preferred=None):
+    def __init__(self, name, device_address_preferred=None, bypass_address_claim=False):
         """
         :param name:
             A j1939 :class:`j1939.Name` instance
         :param device_address_preferred:
             The device_address this CA should claim on the bus.
+        :param bypass_address_claim:
+            Flag to bypass address claim procedure
         """
         self._name = name
         self._device_address_preferred = device_address_preferred
-        self._device_address_announced = j1939.ParameterGroupNumber.Address.NULL
-        self._device_address = j1939.ParameterGroupNumber.Address.NULL
-        self._device_address_state = ControllerApplication.State.NONE
+        if bypass_address_claim and device_address_preferred:
+            self._device_address_announced = device_address_preferred
+            self._device_address = device_address_preferred
+            self._device_address_state = ControllerApplication.State.NORMAL
+        else:
+            self._device_address_announced = j1939.ParameterGroupNumber.Address.NULL
+            self._device_address = j1939.ParameterGroupNumber.Address.NULL
+            self._device_address_state = ControllerApplication.State.NONE
         self._ecu = None
         self._subscribers_request = []
         self._subscribers_acknowledge = []
