@@ -145,7 +145,7 @@ class Dm14Query:
         for i in range(len(raw_bytes) // self.object_byte_size):
             values.append(
                 int.from_bytes(
-                    raw_bytes[i : self.object_byte_size - 1],
+                    raw_bytes[i : self.object_byte_size],
                     byteorder="little",
                     signed=self.signed,
                 )
