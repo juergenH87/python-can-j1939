@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 class AcceptAllCA(j1939.ControllerApplication):
     """CA to accept all messages"""
 
-    def __init__(self, name, device_address_preferred=None):
+    def __init__(self, name, device_address_preferred, bypass_address_claim):
         # old fashion calling convention for compatibility with Python2
-        j1939.ControllerApplication.__init__(self, name, device_address_preferred)
+        j1939.ControllerApplication.__init__(self, name, device_address_preferred, bypass_address_claim)
 
     def message_acceptable(self, dest_address):
         """Indicates if this CA would accept a message
@@ -115,13 +115,9 @@ class Feeder:
         self, device_address_preferred=None, bypass_address_claim=False
     ):
         # install a fake-CA to accept all messages
-        ca = AcceptAllCA(None, device_address_preferred=device_address_preferred)
+        ca = AcceptAllCA(None, device_address_preferred, bypass_address_claim)
 
         self.ecu.add_ca(controller_application=ca)
-        if bypass_address_claim:  # hack
-            ca._device_address = device_address_preferred
-            ca._device_address_state = j1939.ControllerApplication.State.NORMAL
-            self.ecu.subscribe(self._on_message)
         return ca
 
     def receive(self):
