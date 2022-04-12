@@ -17,7 +17,7 @@ class DTC:
             if self._cm != 0:
                 logger.error("DM01: deprecated spn conversion modes are not supported")
         else:
-            self._dtc = ((spn & 0xFFFF) | ((spn & 0x70000) << 5) | ((fmi & 0x1F) << 16) | (oc & 0x7F << 24))
+            self._dtc = ((spn & 0xFFFF) | ((spn & 0x70000) << 5) | ((fmi & 0x1F) << 16) | ((oc & 0x7F) << 24))
             self._spn = spn
             self._fmi = fmi
             self._oc = oc
