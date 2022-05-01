@@ -44,12 +44,13 @@ class J1939_22:
         T5 = 3.000 # Maximum time, for originator, to receive EOMA after sending EOMS
 
     class SendBufferState:
-        WAITING_CTS = 0        # waiting for CTS
-        SENDING_RTS_CTS = 1    # sending rts/cts packages
-        SENDING_BAM = 2        # sending broadcast packages
-        SENDING_EOM_STATUS = 3 # sending end of message
-        WAITING_EOM_ACK = 4    # waiting for end of message acknowledge
-        EOM_ACK_RECEIVED = 5   # eom acknowledge received successfully
+        WAITING_CTS             = 0 # waiting for CTS
+        SENDING_RTS_CTS         = 1 # sending rts/cts packages
+        SENDING_BAM             = 2 # sending broadcast packages
+        SENDING_EOM_STATUS      = 3 # sending end of message
+        WAITING_EOM_ACK         = 4 # waiting for end of message acknowledge
+        EOM_ACK_RECEIVED        = 5 # eom acknowledge received successfully
+        TRANSMISSION_FINISHED   = 6 # finished, remove buffer
 
     class Acknowledgement:
         ACK = 0
@@ -428,6 +429,8 @@ class J1939_22:
                                                   buf['message_size'], buf['num_segments'], buf['pgn'])
                         del self._snd_buffer[bufid]
                         self.__put_bam_session(buf['session'])
+                    elif buf['state'] == self.SendBufferState.TRANSMISSION_FINISHED:
+                        del self._snd_buffer[bufid]
                     else:
                         logger.critical('unknown SendBufferState %d', buf['state'])
                         del self._snd_buffer[bufid]
@@ -578,7 +581,9 @@ class J1939_22:
             # if abort received before transmission established -> cancel transmission
             buffer_hash = self._buffer_hash(session_num, dest_address, src_address)
             if buffer_hash in self._snd_buffer and self._snd_buffer[buffer_hash]['state'] == self.SendBufferState.WAITING_CTS:
-                del self._snd_buffer[buffer_hash] # cancel transmission
+                # cancel transmission
+                self._snd_buffer[buffer_hash]['state'] = self.SendBufferState.TRANSMISSION_FINISHED
+                self._snd_buffer[buffer_hash]['deadline'] = time.time()
             # TODO: any more abort responses?
         else:
             raise RuntimeError('Received TP.CM with unknown control_byte %d', control_byte)

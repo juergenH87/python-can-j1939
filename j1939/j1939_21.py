@@ -33,9 +33,10 @@ class J1939_21:
         Tb = 0.050
 
     class SendBufferState:
-        WAITING_CTS = 0        # waiting for CTS
-        SENDING_IN_CTS = 1     # sending packages (temporary state)
-        SENDING_BM = 2         # sending broadcast packages
+        WAITING_CTS             = 0 # waiting for CTS
+        SENDING_IN_CTS          = 1 # sending packages (temporary state)
+        SENDING_BM              = 2 # sending broadcast packages
+        TRANSMISSION_FINISHED   = 3 # finished, remove buffer
 
     def __init__(self, send_message, job_thread_wakeup, notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, ecu_is_message_acceptable):
         # Receive buffers
@@ -237,6 +238,8 @@ class J1939_21:
                         else:
                             # done
                             del self._snd_buffer[bufid]
+                    elif buf['state'] == self.SendBufferState.TRANSMISSION_FINISHED:
+                        del self._snd_buffer[bufid]
                     else:
                         logger.critical("unknown SendBufferState %d", buf['state'])
                         del self._snd_buffer[bufid]
@@ -326,7 +329,8 @@ class J1939_21:
                 self.__send_tp_abort(dest_address, src_address, self.ConnectionAbortReason.RESOURCES, pgn)
                 return
             # TODO: should we inform the application about the successful transmission?
-            del self._snd_buffer[buffer_hash]
+            self._snd_buffer[buffer_hash]['state'] = self.SendBufferState.TRANSMISSION_FINISHED
+            self._snd_buffer[buffer_hash]['deadline'] = time.time()
             self.__job_thread_wakeup()
         elif control_byte == self.ConnectionMode.BAM:
             message_size = data[1] | (data[2] << 8)
@@ -354,7 +358,8 @@ class J1939_21:
             # if abort received before transmission established -> cancel transmission
             buffer_hash = self._buffer_hash(dest_address, src_address)
             if buffer_hash in self._snd_buffer and self._snd_buffer[buffer_hash]['state'] == self.SendBufferState.WAITING_CTS:
-                del self._snd_buffer[buffer_hash] # cancel transmission
+                self._snd_buffer[buffer_hash]['state'] = self.SendBufferState.TRANSMISSION_FINISHED
+                self._snd_buffer[buffer_hash]['deadline'] = time.time()
             # TODO: any more abort responses?
             pass
         else:
