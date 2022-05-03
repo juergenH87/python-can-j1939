@@ -8,7 +8,7 @@ from .controller_application import ControllerApplication
 from .parameter_group_number import ParameterGroupNumber
 from .j1939_21 import J1939_21
 from .j1939_22 import J1939_22
-
+from .message_id import FrameFormat
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,7 @@ class ElectronicControlUnit:
         """
         return self.j1939_dll.remove_ca(device_address)
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
         """send a pgn
         :param int data_page: data page
         :param int pdu_format: pdu format
@@ -207,9 +207,9 @@ class ElectronicControlUnit:
         after this time, the multi-pg will be sent. several pgs can thus be combined in one multi-pg.
         0 or no time-limit means immediate sending.
         """
-        return self.j1939_dll.send_pgn(data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit)
+        return self.j1939_dll.send_pgn(data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format)
 
-    def send_message(self, can_id, data, fd_format=False):
+    def send_message(self, can_id, extended_id, data, fd_format=False):
         """Send a raw CAN message to the bus.
 
         This method may be overridden in a subclass if you need to integrate
@@ -229,7 +229,7 @@ class ElectronicControlUnit:
 
         if not self._bus:
             raise RuntimeError("Not connected to CAN bus")
-        msg = can.Message(is_extended_id=True,
+        msg = can.Message(is_extended_id=extended_id,
                           arbitration_id=can_id,
                           data=data,
                           is_fd=fd_format,
