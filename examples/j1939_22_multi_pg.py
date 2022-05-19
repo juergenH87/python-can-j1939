@@ -1,6 +1,7 @@
 import logging
 import time
 import j1939
+from j1939.message_id import FrameFormat
 
 
 logging.getLogger('j1939').setLevel(logging.DEBUG)
@@ -24,7 +25,7 @@ def on_message(priority, pgn, sa, timestamp, data):
     print("PGN {} length {}".format(pgn, len(data)), timestamp)
 
 
-def ca_timer_callback1(ca):
+def ca_timer_callback1(ca : j1939.ControllerApplication):
     """Callback for sending messages
 
     This callback is registered at the ECU timer event mechanism to be
@@ -43,10 +44,13 @@ def ca_timer_callback1(ca):
 
     # sending broadcast message
     # the following two PGNs are packed into one multi-pg, due to time-limit of 10ms and same destination address (global)
-    ca.send_pgn(0, 0xFD, 0xED, 6, data, time_limit=0.01)
-    ca.send_pgn(0, 0xFE, 0x32, 6, data, time_limit=0.01)
+    ca.send_pgn(0, 0xFD, 0xED, 6, data, time_limit=0.01, frame_format=FrameFormat.FBFF)    # Frame-Format FBFF
+    ca.send_pgn(0, 0xFE, 0x32, 6, data, time_limit=0.01, frame_format=FrameFormat.FBFF)    # Frame-Format FBFF
 
-    # sending normal peer-to-peer message, destintion address is 0x04
+    ca.send_pgn(0, 0xFA, 0xED, 6, data, time_limit=0.01)    # Frame-Format FEFF
+    ca.send_pgn(0, 0xFB, 0x32, 6, data, time_limit=0.01)    # Frame-Format FEFF
+
+    # sending peer-to-peer message, destintion address is 0x04
     # the following PGNs are transferred separately, because time limit == 0
     ca.send_pgn(0, 0xE0, 0x04, 6, data)
     ca.send_pgn(0, 0xD0, 0x04, 6, data)
@@ -62,7 +66,7 @@ def main():
     ecu = j1939.ElectronicControlUnit(data_link_layer='j1939-22', max_cmdt_packets=200)
 
     # can fd Baud: 500k/2M
-    ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', fd=True,
+    ecu.connect(bustype='pcan', channel='PCAN_USBBUS3', fd=True,
                         f_clock_mhz=80, nom_brp=10, nom_tseg1=12, nom_tseg2=3, nom_sjw=1, data_brp=4, data_tseg1=7, data_tseg2=2, data_sjw=1)
 
     # subscribe to all (global) messages on the bus

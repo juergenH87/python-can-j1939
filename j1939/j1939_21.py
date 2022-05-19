@@ -92,7 +92,7 @@ class J1939_21:
         if len(data) <= 8:
             # send normal message
             mid = MessageId(priority=priority, parameter_group_number=pgn.value, source_address=src_address)
-            self.__send_message(mid.can_id, data)
+            self.__send_message(mid.can_id, True, data)
         else:
             # if the PF is between 0 and 239, the message is destination dependent when pdu_specific != 255
             # if the PF is between 240 and 255, the message can only be broadcast
@@ -413,42 +413,42 @@ class J1939_21:
     def __send_tp_dt(self, src_address, dest_address, data):
         pgn = ParameterGroupNumber(0, 235, dest_address)
         mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
-        self.__send_message(mid.can_id, data)
+        self.__send_message(mid.can_id, True, data)
 
     def __send_tp_abort(self, src_address, dest_address, reason, pgn_value):
         pgn = ParameterGroupNumber(0, 236, dest_address)
         mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.ABORT, reason, 0xFF, 0xFF, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
-        self.__send_message(mid.can_id, data)
+        self.__send_message(mid.can_id, True, data)
 
     def __send_tp_cts(self, src_address, dest_address, num_packets, next_packet, pgn_value):
         pgn = ParameterGroupNumber(0, 236, dest_address)
         mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.CTS, num_packets, next_packet, 0xFF, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
-        self.__send_message(mid.can_id, data)
+        self.__send_message(mid.can_id, True, data)
 
     def __send_tp_eom_ack(self, src_address, dest_address, message_size, num_packets, pgn_value):
         pgn = ParameterGroupNumber(0, 236, dest_address)
         mid = MessageId(priority=7, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.EOM_ACK, message_size & 0xFF, (message_size >> 8) & 0xFF, num_packets, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
-        self.__send_message(mid.can_id, data)
+        self.__send_message(mid.can_id, True, data)
 
     def __send_tp_rts(self, src_address, dest_address, priority, pgn_value, message_size, num_packets, max_cmdt_packets):
         pgn = ParameterGroupNumber(0, 236, dest_address)
         mid = MessageId(priority=priority, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.RTS, message_size & 0xFF, (message_size >> 8) & 0xFF, num_packets, max_cmdt_packets, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
-        self.__send_message(mid.can_id, data)
+        self.__send_message(mid.can_id, True, data)
 
     def __send_acknowledgement(self, control_byte, group_function_value, address_acknowledged, pgn):
         data = [control_byte, group_function_value, 0xFF, 0xFF, address_acknowledged, (pgn & 0xFF), ((pgn >> 8) & 0xFF), ((pgn >> 16) & 0xFF)]
         mid = MessageId(priority=6, parameter_group_number=0x00E800, source_address=255)
-        self.__send_message(mid.can_id, data)
+        self.__send_message(mid.can_id, True, data)
 
     def __send_tp_bam(self, src_address, priority, pgn_value, message_size, num_packets):
         pgn = ParameterGroupNumber(0, 236, ParameterGroupNumber.Address.GLOBAL)
         mid = MessageId(priority=priority, parameter_group_number=pgn.value, source_address=src_address)
         data = [self.ConnectionMode.BAM, message_size & 0xFF, (message_size >> 8) & 0xFF, num_packets, 0xFF, pgn_value & 0xFF, (pgn_value >> 8) & 0xFF, (pgn_value >> 16) & 0xFF]
-        self.__send_message(mid.can_id, data)
+        self.__send_message(mid.can_id, True, data)
 
     def notify(self, can_id, data, timestamp):
         """Feed incoming CAN message into this ecu.

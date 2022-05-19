@@ -1,5 +1,6 @@
+from tkinter import E
 from .parameter_group_number import ParameterGroupNumber
-from .message_id import MessageId
+from .message_id import MessageId, FrameFormat
 import logging
 import time
 import numpy as np
@@ -87,6 +88,8 @@ class J1939_22:
         # specified time range in j1939-22: 10-200ms
         if minimum_tp_bam_dt_interval == None:
             self._minimum_tp_bam_dt_interval = 0.010
+        else:
+            self._minimum_tp_bam_dt_interval = minimum_tp_bam_dt_interval
 
         # Up to 4 concurrent BAM sessions per originator address are allowed
         self.__bam_session_list = [True] * 4
@@ -113,7 +116,7 @@ class J1939_22:
         return False
 
     def _buffer_hash(self, session_num, src_address, dest_address):
-        """Calcluates a hash value for the given address pair
+        """Calculates a hash value for the given address pair
 
         :param src_address:
             The Source-Address the connection should bound to.
@@ -125,10 +128,29 @@ class J1939_22:
 
         :rtype: int
         """
-        return (((session_num & 0xF) << 16) | (src_address & 0xFF) << 8) | (dest_address & 0xFF)
+        return ((session_num & 0xF) << 16) | ((src_address & 0xFF) << 8) | (dest_address & 0xFF)
+
+    def _buffer_hash_mpg(self, frame_format, msg_counter, src_address, dest_address):
+        """Calculates a hash value for the given multi-pg arguments
+
+        :param frame_format:
+            The frame-format (FBFF, FEFF) the connection should bound to.
+        :param msg_counter:
+            The message counter the connection should bound to.
+        :param src_address:
+            The Source-Address the connection should bound to.
+        :param dest_address:
+            The Destination-Address the connection should bound to.
+
+        :return:
+            The calculated hash value.
+
+        :rtype: int
+        """
+        return ((frame_format & 0xFF) << 24) | ((msg_counter & 0xFF) << 16) | ((src_address & 0xFF) << 8) | (dest_address & 0xFF)
 
     def _buffer_unhash(self, hash):
-        """Calcluates session-number, source-address and destination-address for the given hash value
+        """Calculates session-number, source-address and destination-address for the given hash value
 
         :param hash:
             The hash to be unhased
@@ -137,6 +159,17 @@ class J1939_22:
             The session-number, source-address and destination-address
         """
         return ((hash >> 16) & 0xFF), ((hash >> 8) & 0xFF), (hash & 0xFF)
+
+    def _buffer_unhash_mpg(self, hash):
+        """Calculates frame_format, msg_counter, source-address and destination-address for the given hash value
+
+        :param hash:
+            The hash to be unhased
+
+        :return:
+            The session-number, source-address and destination-address
+        """
+        return ((hash >> 24) & 0xFF), ((hash >> 16) & 0xFF), ((hash >> 8) & 0xFF), (hash & 0xFF)
 
     def __get_bam_session(self):
         for idx, i in enumerate(self.__bam_session_list):
@@ -158,7 +191,7 @@ class J1939_22:
     def __put_rts_cts_session(self, session):
         self.__rts_cts_session_list[session] = True
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, tos = 2, trailer_format = 0):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format, tos=2, trailer_format=0):
         pgn = ParameterGroupNumber(data_page, pdu_format, pdu_specific)
         data_length = len(data)
 
@@ -173,17 +206,24 @@ class J1939_22:
                 cpgn = pgn.value
                 dst_address = ParameterGroupNumber.Address.GLOBAL
 
+            if (frame_format==FrameFormat.FBFF):
+                priority = 0
+                if (dst_address!=ParameterGroupNumber.Address.GLOBAL):
+                    logger.info('FBFF message must be a broadcast type')
+                    return False
+
             # create header dict
             cpg = {'priority': (priority & 0x7), 'tos': (tos & 0x7), 'tf': (trailer_format & 0x7), 'cpgn': (cpgn & 0x3FFFF), 'data_length': data_length, 'data': data.copy()}
 
             # send immediately
             if time_limit == 0:
-                self.__send_multi_pg([cpg], src_address, dst_address)
+                self.__send_multi_pg(frame_format, [cpg], src_address, dst_address)
             else:
                 session = 0
                 deadline = time.time() + time_limit
                 while True:
-                    hash = self._buffer_hash(session, src_address, dst_address)
+                    hash = self._buffer_hash_mpg(frame_format, session, src_address, dst_address)
+                    #hash = self._buffer_hash(session, src_address, dst_address)
                     if hash not in self._multi_pg_snd_buffer:
                         self._multi_pg_snd_buffer[hash] = {'deadline': deadline, 'cpg': [cpg], 'fill_level': 4 + data_length}
                         break
@@ -209,13 +249,13 @@ class J1939_22:
                 dest_address = ParameterGroupNumber.Address.GLOBAL
                 session_num = self.__get_bam_session()
                 if session_num == None:
-                    print('bam session not available')
+                    #print('bam session not available')
                     return False
             else:
                 dest_address = pdu_specific
                 session_num = self.__get_rts_cts_session()
                 if session_num == None:
-                    print('rts/cts session not available')
+                    #print('rts/cts session not available')
                     return False
 
             # init sequence
@@ -280,7 +320,7 @@ class J1939_22:
 
         return True
 
-    def __send_multi_pg(self, cpg_list, src_address, dst_address):
+    def __send_multi_pg(self, frame_format, cpg_list, src_address, dst_address):
         # deadline reached
         priority = 7
         data = []
@@ -306,10 +346,13 @@ class J1939_22:
             else:
                 data.append(0xAA)
 
-        mid = MessageId(priority=priority,
-                        parameter_group_number=ParameterGroupNumber.PGN.FEFF_MULTI_PG | (dst_address & 0xFF),
-                        source_address=src_address)
-        self.__send_message(mid.can_id, data, fd_format=True)
+        if frame_format == FrameFormat.FBFF:
+            self.__send_message(src_address, False, data, fd_format=True)
+        else:
+            mid = MessageId(priority=priority,
+                            parameter_group_number=ParameterGroupNumber.PGN.FEFF_MULTI_PG | (dst_address & 0xFF),
+                            source_address=src_address)
+            self.__send_message(mid.can_id, True, data, fd_format=True)
 
 
     def async_job_thread(self, now):
@@ -345,9 +388,9 @@ class J1939_22:
                     next_wakeup = buf['deadline']
             else:
                 # deadline reached
-                session_num, src_address, dst_address = self._buffer_unhash(bufid)
+                frame_format, session_num, src_address, dst_address = self._buffer_unhash_mpg(bufid)
 
-                self.__send_multi_pg(buf['cpg'], src_address, dst_address)
+                self.__send_multi_pg(frame_format, buf['cpg'], src_address, dst_address)
 
                 del self._multi_pg_snd_buffer[bufid]
 
@@ -717,7 +760,7 @@ class J1939_22:
         data[10] = ( (pgn >> 8) & 0xFF )
         data[11] = ( (pgn >> 16) & 0xFF )
         # 13 up to 64 Assurance Data of full message calculated using AD Type. Total length = Size in byte 8.
-        self.__send_message(mid.can_id, data, fd_format=True)
+        self.__send_message(mid.can_id, True, data, fd_format=True)
 
     def __send_tp_dt(self, src_address, dest_address, session_num, segment_num, data, Dtfi=0):
         pgn = ParameterGroupNumber(0, (ParameterGroupNumber.PGN.FD_TP_DT>>8) & 0xFF, dest_address)
@@ -739,7 +782,7 @@ class J1939_22:
             while len(data)<next_valid_fd_length:
                 data.append(255)
 
-        self.__send_message(mid.can_id, data, fd_format=True)
+        self.__send_message(mid.can_id, True, data, fd_format=True)
 
 
     def notify(self, can_id, data, timestamp):
