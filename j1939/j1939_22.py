@@ -1,3 +1,4 @@
+from tkinter import E
 from .parameter_group_number import ParameterGroupNumber
 from .message_id import MessageId, FrameFormat
 import logging
@@ -87,6 +88,8 @@ class J1939_22:
         # specified time range in j1939-22: 10-200ms
         if minimum_tp_bam_dt_interval == None:
             self._minimum_tp_bam_dt_interval = 0.010
+        else:
+            self._minimum_tp_bam_dt_interval = minimum_tp_bam_dt_interval
 
         # Up to 4 concurrent BAM sessions per originator address are allowed
         self.__bam_session_list = [True] * 4
@@ -246,13 +249,13 @@ class J1939_22:
                 dest_address = ParameterGroupNumber.Address.GLOBAL
                 session_num = self.__get_bam_session()
                 if session_num == None:
-                    print('bam session not available')
+                    #print('bam session not available')
                     return False
             else:
                 dest_address = pdu_specific
                 session_num = self.__get_rts_cts_session()
                 if session_num == None:
-                    print('rts/cts session not available')
+                    #print('rts/cts session not available')
                     return False
 
             # init sequence
