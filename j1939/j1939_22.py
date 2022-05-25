@@ -1,4 +1,3 @@
-from tkinter import E
 from .parameter_group_number import ParameterGroupNumber
 from .message_id import MessageId, FrameFormat
 import logging
