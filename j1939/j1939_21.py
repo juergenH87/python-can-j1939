@@ -87,7 +87,7 @@ class J1939_21:
         """
         return ((src_address & 0xFF) << 8) | (dest_address & 0xFF)
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format):
         pgn = ParameterGroupNumber(data_page, pdu_format, pdu_specific)
         if len(data) <= 8:
             # send normal message
