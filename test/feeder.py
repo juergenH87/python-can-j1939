@@ -63,7 +63,7 @@ class Feeder:
             message = self.can_messages.pop(0)
             self.message_queue.put(message)
 
-    def _send_message(self, can_id, data, fd_format=False):
+    def _send_message(self, can_id, extended_id, data, fd_format=False):
         """Will be used instead of the usual ecu.send_message method.
 
         Checks the message sent and generates the apropriate answer.
