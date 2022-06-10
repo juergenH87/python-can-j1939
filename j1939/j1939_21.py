@@ -199,18 +199,25 @@ class J1939_21:
                                 while len(data)<7:
                                     data.append(255)
                             data.insert(0, package+1)
-                            self.__send_tp_dt(buf['src_address'], buf['dest_address'], data)
+
+                            # modify the snd_buffer state in anticipation
+                            # of the message we are about to transmit
 
                             buf['next_packet_to_send'] += 1
 
-                            # send end of message status
+                            should_break = False
                             if package == buf['next_wait_on_cts']:
                                 # wait on next cts
                                 buf['state'] = self.SendBufferState.WAITING_CTS
                                 buf['deadline'] = time.time() + self.Timeout.T3
-                                break
+                                should_break = True
                             elif self._minimum_tp_rts_cts_dt_interval != None:
                                 buf['deadline'] = time.time() + self._minimum_tp_rts_cts_dt_interval
+                                should_break = True
+
+                            # state is ready for recv - Now send the message
+                            self.__send_tp_dt(buf['src_address'], buf['dest_address'], data)
+                            if should_break:
                                 break
 
                         # recalc next wakeup
@@ -227,7 +234,10 @@ class J1939_21:
                             while len(data)<7:
                                 data.append(255)
                         data.insert(0, buf['next_packet_to_send']+1)
-                        self.__send_tp_dt(buf['src_address'], buf['dest_address'], data)
+
+                        # modify the snd_buffer state in anticipation
+                        # of the message we are about to transmit
+
                         buf['next_packet_to_send'] += 1
 
                         if buf['next_packet_to_send'] < buf['num_packages']:
@@ -238,6 +248,9 @@ class J1939_21:
                         else:
                             # done
                             del self._snd_buffer[bufid]
+
+                        # state is updated and ready for recv - now send data
+                        self.__send_tp_dt(buf['src_address'], buf['dest_address'], data)
                     elif buf['state'] == self.SendBufferState.TRANSMISSION_FINISHED:
                         del self._snd_buffer[bufid]
                     else:
