@@ -2,6 +2,7 @@ import logging
 import can
 from can import Listener
 import time
+import sys
 import threading
 import queue
 from .controller_application import ControllerApplication
@@ -269,8 +270,10 @@ class ElectronicControlUnit:
         wakeup the timeout handler to recalculate the new sleep-time
         to awake at the new events.
         """
-        import pythoncom
-        pythoncom.CoInitialize()
+        system = sys.platform
+        if "win" in system:
+            import pythoncom
+            pythoncom.CoInitialize()
 
         while not self._job_thread_end.is_set():
 
@@ -306,7 +309,8 @@ class ElectronicControlUnit:
                     # do nothing
                     pass
 
-        pythoncom.CoUnitialize()
+        if "win" in system:
+            pythoncom.CoUnitialize()
 
     def _job_thread_wakeup(self):
         """Wakeup the async job thread
