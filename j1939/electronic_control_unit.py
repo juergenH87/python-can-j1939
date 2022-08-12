@@ -269,6 +269,9 @@ class ElectronicControlUnit:
         wakeup the timeout handler to recalculate the new sleep-time
         to awake at the new events.
         """
+        import pythoncom
+        pythoncom.CoInitialize()
+
         while not self._job_thread_end.isSet():
 
             now = time.time()
@@ -302,6 +305,8 @@ class ElectronicControlUnit:
                 except queue.Empty:
                     # do nothing
                     pass
+
+        pythoncom.CoUnitialize()
 
     def _job_thread_wakeup(self):
         """Wakeup the async job thread
