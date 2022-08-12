@@ -272,7 +272,7 @@ class ElectronicControlUnit:
         import pythoncom
         pythoncom.CoInitialize()
 
-        while not self._job_thread_end.isSet():
+        while not self._job_thread_end.is_set():
 
             now = time.time()
 
