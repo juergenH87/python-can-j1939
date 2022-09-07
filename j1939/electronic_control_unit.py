@@ -269,7 +269,7 @@ class ElectronicControlUnit:
         wakeup the timeout handler to recalculate the new sleep-time
         to awake at the new events.
         """
-        while not self._job_thread_end.isSet():
+        while not self._job_thread_end.is_set():
 
             now = time.time()
 
