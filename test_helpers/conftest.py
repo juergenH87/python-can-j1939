@@ -2,7 +2,7 @@ import pytest
 
 from test_helpers.feeder import Feeder
 
-@pytest.fixture(scope ="class")
+@pytest.fixture()
 def feeder():
     #setup
     feeder = Feeder()
