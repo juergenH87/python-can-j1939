@@ -2,6 +2,7 @@ import pytest
 import time
 
 from test_helpers.feeder import Feeder
+from test_helpers.conftest import feeder
 import j1939
 
 
