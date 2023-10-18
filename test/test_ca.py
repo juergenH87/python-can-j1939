@@ -1,7 +1,9 @@
 import time
 
 import j1939
-from feeder import Feeder
+from test_helpers.feeder import Feeder
+from test_helpers.conftest import feeder
+
 
 def address_claim(
     feeder,

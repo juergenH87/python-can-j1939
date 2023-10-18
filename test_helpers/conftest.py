@@ -1,6 +1,6 @@
 import pytest
 
-from feeder import Feeder
+from test_helpers.feeder import Feeder
 
 @pytest.fixture()
 def feeder():
