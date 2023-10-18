@@ -2,7 +2,6 @@ from .parameter_group_number import ParameterGroupNumber
 from .message_id import MessageId, FrameFormat
 import logging
 import time
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -267,13 +266,15 @@ class J1939_22:
             if priority == None: priority = 7
 
             # get chunks from data
-            full_tp_size_packages = int(data_length/self.DataLength.TP)
-            arr = np.array(data)
-            list_of_arr = np.split(arr, [full_tp_size_packages*self.DataLength.TP])
-            arr = np.reshape(list_of_arr[0], (-1,self.DataLength.TP))
-            data_list = arr.tolist()
-            if len(list_of_arr) > 1:
-                data_list.append(list_of_arr[1].tolist())
+            full_tp_size_packages = int(data_length / self.DataLength.TP)
+            data_list = []
+            for i in range(full_tp_size_packages):
+                start_index = i * self.DataLength.TP
+                end_index = (i + 1) * self.DataLength.TP
+                sublist = data[start_index:end_index]
+                data_list.append(sublist)
+            if data_length % self.DataLength.TP != 0:
+                data_list.append(data[full_tp_size_packages*self.DataLength.TP:])
 
             # if the PF is between 240 and 255, the message can only be broadcast
             if dest_address == ParameterGroupNumber.Address.GLOBAL:
