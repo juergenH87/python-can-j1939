@@ -2,6 +2,7 @@ from enum import Enum
 import queue
 import sys
 import time
+import secrets 
 
 import j1939
 
@@ -201,5 +202,23 @@ class Dm14Query:
     def set_seed_key_algorithm(self, algorithm):
         self._seed_from_key = algorithm
 
+
+class DM14Response:
+    def __init__(self, ca: j1939.ControllerApplication):
+        """
+        performs memory access responses using DM14-DM18 messaging.
+
+        :param obj ca: j1939 controller application
+        """
+
+        self._ca = ca
+        self.state = QueryState.IDLE
+        self.key_from_seed = None
+
+    def generate_seed(self) -> int:
+        return secrets.randbits(16)
+
     def set_seed_key_algorithm(self, algorithm):
-        self._seed_from_key = algorithm
+        self._key_from_seed = algorithm
+  
+  

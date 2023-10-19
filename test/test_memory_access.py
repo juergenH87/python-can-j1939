@@ -89,4 +89,13 @@ def test_dm14_write(feeder, expected_messages):
 
     feeder.process_messages()
 
+def test_dm14_seed(feeder):
+
+    ca = feeder.accept_all_messages(
+        device_address_preferred=0xF9, bypass_address_claim=True
+    )
+    
+    dm14 = j1939.DM14Response(ca)
+    print(dm14.generate_seed())
+    
 # TODO: moar test
