@@ -24,12 +24,14 @@ class Command(Enum):
     BOOT_LOAD = 6
     EDCP_GENERATION = 7
 
+class ResponseState(Enum):
+    IDLE = 1
+    WAIT_FOR_DM14 = 2
 
 class ReceiveState(Enum):
     IDLE = 1
     WAIT_FOR_KEY = 2
     WAIT_FOR_CONFIRMATION = 3
-
 
 class Dm15Status(Enum):
     PROCEED = 0
@@ -99,7 +101,7 @@ class Dm14Query:
             return
         seed = (data[7] << 8) + data[6]
         status = (data[1] >> 1) & 7
-        if status is Dm15Status.BUSY.value or status is Dm15Status.OPERATION_FAILED:
+        if status is Dm15Status.BUSY.value or status is Dm15Status.OPERATION_FAILED.value:
             error = int.from_bytes(data[2:4], byteorder="little", signed=False)
             self.data_queue.put(None)
             if error == 0x1000:
@@ -213,12 +215,85 @@ class DM14Response:
 
         self._ca = ca
         self.state = QueryState.IDLE
-        self.key_from_seed = None
+        self._key_from_seed = None
+        self.data_queue = queue.Queue()
 
-    def generate_seed(self) -> int:
-        return secrets.randbits(16)
 
+    def _parse_dm14(self, priority, pgn, sa, timestamp, data):
+        print("i'm alive")
+        if pgn != j1939.ParameterGroupNumber.PGN.DM14 or sa != self._dest_address:
+            return
+        length = len(data)
+        self.address = data[2:(length - 2)]
+        self.direct = data[1] >> 4
+        self.command = ((data[1] - 1) & 0x0F) >> 1
+        self.object_count = data[0]
+        self.access_level = (data[length -1] << 8) + data[length-2]
+        self.data_queue.put(data)
+        self.state = QueryState.IDLE
+        
+    def _send_dm15(self):
+        self._pgn = j1939.ParameterGroupNumber.PGN.DM15
+
+        data = []
+        self.status = Dm15Status.PROCEED.value
+        data.append(self.object_count)
+        data.append((self.status << 1))
+        if self._key_from_seed is not None:
+            seed = self.generate_seed()
+        else:
+            seed = 0xFFFF
+        data.append(seed & 0xFF)
+        data.append(seed >> 8) #WRONG
+
+    def generate_seed(self):
+        seed = secrets.randbits(16)
+        while(seed == 0xFFFF):
+            seed = secrets.randbits(16)
+        return seed
+    
     def set_seed_key_algorithm(self, algorithm):
         self._key_from_seed = algorithm
-  
-  
+
+    def listen(self, receive_address, object_byte_size=1):
+        self._dest_address = receive_address
+        self.object_byte_size = object_byte_size
+        self._ca.subscribe(self._parse_dm14)
+        self.state = QueryState.WAIT_FOR_SEED
+
+        # wait for DM14 query to arrive 
+        self.data_queue.get(block=True, timeout=3)
+        return self.address, self.command, self.direct, self.object_count, self.access_level
+
+    # def respond(self, status, data, error=0xFFFF):
+
+#   def _parse_dm15(self, priority, pgn, sa, timestamp, data):
+#         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
+#             return
+#         seed = (data[7] << 8) + data[6]
+#         status = (data[1] >> 1) & 7
+#         if status is Dm15Status.BUSY.value or status is Dm15Status.OPERATION_FAILED:
+#             error = int.from_bytes(data[2:4], byteorder="little", signed=False)
+#             self.data_queue.put(None)
+#             if error == 0x1000:
+#                 raise RuntimeError("Key authentication error")
+#             else:  # TODO parse error codes more granularly
+#                 raise RuntimeError(f"Device {sa} busy")
+#         length = data[0]
+#         if seed == 0xFFFF and length == self.object_count:
+#             self._wait_for_data()
+#         else:
+#             if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
+#                 assert status is Command.OPERATION_COMPLETED.value
+#                 self._send_operation_complete()
+#                 self.state = QueryState.IDLE
+#                 self.data_queue.put(self.mem_data)
+#             else:
+#                 assert self.state is QueryState.WAIT_FOR_SEED
+#                 if self._seed_from_key is not None:
+#                     self._send_dm14(self._seed_from_key(seed))
+#                 else:
+#                     self.data_queue.put(None)
+#                     raise RuntimeError(
+#                         "Key requested from host but no seed-key algorithm has been provided"
+#                     )

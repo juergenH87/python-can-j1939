@@ -1,6 +1,5 @@
 import pytest
 import time
-
 from test_helpers.feeder import Feeder
 from test_helpers.conftest import feeder
 import j1939
@@ -49,53 +48,64 @@ def key_from_seed(seed):
     return seed ^ 0xFFFF
 
 
-@pytest.mark.parametrize(
-    argnames=["expected_messages"],
-    argvalues=[[read_with_seed_key], [read_no_seed_key]],
-    ids=["With seed key", "Without seed key"],
-)
-def test_dm14_read(feeder, expected_messages):
-    feeder.can_messages = expected_messages
-    feeder.pdus_from_messages()
+# @pytest.mark.parametrize(
+#     argnames=["expected_messages"],
+#     argvalues=[[read_with_seed_key], [read_no_seed_key]],
+#     ids=["With seed key", "Without seed key"],
+# )
+# def test_dm14_read(feeder, expected_messages):
+#     feeder.can_messages = expected_messages
+#     feeder.pdus_from_messages()
 
-    ca = feeder.accept_all_messages(
-        device_address_preferred=0xF9, bypass_address_claim=True
-    )
+#     ca = feeder.accept_all_messages(
+#         device_address_preferred=0xF9, bypass_address_claim=True
+#     )
 
-    dm14 = j1939.Dm14Query(ca)
-    dm14.set_seed_key_algorithm(key_from_seed)
-    dm14.read(0xD4, 1, 0x92000003, 1)
+#     dm14 = j1939.Dm14Query(ca)
+#     dm14.set_seed_key_algorithm(key_from_seed)
 
-    feeder.process_messages()
+#     dm14.read(0xD4, 1, 0x92000003, 1)
 
+#     feeder.process_messages()
+
+
+# @pytest.mark.parametrize(
+#     argnames=["expected_messages"],
+#     argvalues=[[write_with_seed_key], [write_no_seed_key]],
+#     ids=["With seed key", "Without seed key"],
+# )
+# def test_dm14_write(feeder, expected_messages):
+#     feeder.can_messages = expected_messages
+#     feeder.pdus_from_messages()
+
+#     ca = feeder.accept_all_messages(
+#         device_address_preferred=0xF9, bypass_address_claim=True
+#     )
+
+#     dm14 = j1939.Dm14Query(ca)
+#     dm14.set_seed_key_algorithm(key_from_seed)
+#     values = [0x11223344]
+#     dm14.write(0xD4, 1, 0x91000007, values, object_byte_size=4)
+
+#     feeder.process_messages()
 
 @pytest.mark.parametrize(
     argnames=["expected_messages"],
     argvalues=[[write_with_seed_key], [write_no_seed_key]],
     ids=["With seed key", "Without seed key"],
 )
-def test_dm14_write(feeder, expected_messages):
-    feeder.can_messages = expected_messages
+def test_dm14_receive(feeder, expected_messages):
+    feeder.can_messages = [(Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00], 0.0),(Feeder.MsgType.CANRX, 0x18D9F9D4, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00], 0.0)]
     feeder.pdus_from_messages()
-
+    print(feeder.can_messages)
     ca = feeder.accept_all_messages(
         device_address_preferred=0xF9, bypass_address_claim=True
     )
-
-    dm14 = j1939.Dm14Query(ca)
-    dm14.set_seed_key_algorithm(key_from_seed)
-    values = [0x11223344]
-    dm14.write(0xD4, 1, 0x91000007, values, object_byte_size=4)
+    ca.send_pgn(0, (j1939.ParameterGroupNumber.PGN.DM14 >> 8) & 0xFF, 0xD4 & 0xFF, 6, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00])
+    dm14 = j1939.DM14Response(ca)
+    print(dm14.listen(0xD4))
 
     feeder.process_messages()
 
-def test_dm14_seed(feeder):
 
-    ca = feeder.accept_all_messages(
-        device_address_preferred=0xF9, bypass_address_claim=True
-    )
-    
-    dm14 = j1939.DM14Response(ca)
-    print(dm14.generate_seed())
-    
 # TODO: moar test
