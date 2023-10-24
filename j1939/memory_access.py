@@ -243,8 +243,8 @@ class DM14Response:
                     data.append(0xFF)
                 if not self.seed_override:
                     self.seed = self.generate_seed()
-                data.append(self.seed >> 8) 
                 data.append(self.seed & 0xFF)
+                data.append(self.seed >> 8) 
             elif self.state == ResponseState.SEND_PROCEED:
                 data.append(self.object_count)
                 data.append((self.direct << 4) + (self.status << 1) + 1)
@@ -260,7 +260,7 @@ class DM14Response:
             data.append(self.error & 0xFF)
             data.append(0xFF)
             data.append(0xFF)
-        print(0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data)
+
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
         )
@@ -302,7 +302,6 @@ class DM14Response:
             self._ca.subscribe(self._parse_dm14)
             self._send_dm15()
             self.data_queue.get(block=True, timeout=3)
-            print(self.access_level)
             if self.access_level != self._key_from_seed(self.seed): #BROKEN
                 self.proceed = False
                 self.error = 0x1000

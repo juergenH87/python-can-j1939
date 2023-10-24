@@ -102,7 +102,6 @@ def test_dm14_receive(feeder, expected_messages):
         (Feeder.MsgType.CANRX, 0x18D9F9D4, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0xA5, 0x5A], 0.0),
         (Feeder.MsgType.CANTX, 0x1CD8D4F9, [0x01, 0x11, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], 0.0)]
     feeder.pdus_from_messages()
-    print(feeder.can_messages)
     ca = feeder.accept_all_messages(
         device_address_preferred=0xF9, bypass_address_claim=True
     )
@@ -110,8 +109,7 @@ def test_dm14_receive(feeder, expected_messages):
     dm14 = j1939.DM14Response(ca)
     dm14.set_seed_key_algorithm(key_from_seed)
     dm14.listen(0xD4, 1)
-    dm14.respond(True, [], 0xFFFF, True, 0x5AA5)
-    print(hex(0 << 1))
+    dm14.respond(True, [], 0xFFFF, True, 0xA55A)
 
     feeder.process_messages()
 
