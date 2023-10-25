@@ -220,6 +220,17 @@ class DM14Response:
         self._key_from_seed = None
         self.data_queue = queue.Queue()
 
+    def _wait_for_data(self):
+        if self.command is Command.READ.value:
+            self._send_dm16()
+            self.proceed = True
+            self.state = QueryState.WAIT_FOR_OPER_COMPLETE
+            self._ca.subscribe(self._parse_dm14)
+            self._send_dm15()
+        else:
+            self.state = QueryState.WAIT_FOR_DM16
+            self._ca.unsubscribe(self._parse_dm15)
+            self._ca.subscribe(self._parse_dm16)
 
     def _parse_dm14(self, priority, pgn, sa, timestamp, data):
         if pgn != j1939.ParameterGroupNumber.PGN.DM14 or sa != self._dest_address:
@@ -234,37 +245,44 @@ class DM14Response:
         
     def _send_dm15(self):
         self._pgn = j1939.ParameterGroupNumber.PGN.DM15
-        data = []
+        data = [0xFF] * self.length
         if(self.proceed):
+            data[1] = ((self.direct << 4) + (self.status << 1) + 1)
             if self.state == ResponseState.WAIT_FOR_KEY:
-                data.append(0x00)
-                data.append((self.direct << 4) + (self.status << 1) + 1)
-                for i in range((self.length - 4)): # not sure of best way to do this
-                    data.append(0xFF)
+                data[0] = 0x00
                 if not self.seed_override:
                     self.seed = self.generate_seed()
-                data.append(self.seed & 0xFF)
-                data.append(self.seed >> 8) 
+                data[self.length - 2] = (self.seed & 0xFF)
+                data[self.length -1] = (self.seed >> 8) 
             elif self.state == ResponseState.SEND_PROCEED:
-                data.append(self.object_count)
-                data.append((self.direct << 4) + (self.status << 1) + 1)
-                for i in range((self.length - 2)):
-                    data.append(0xFF)
+                data[0] = (self.object_count)
+            else:
+                self.command = Command.OPERATION_COMPLETED.value
+                data[0] = 0x00
+                data[1] = ((self.direct << 4) + (self.command << 1) + 1)
         else:
             self.status = Dm15Status.OPERATION_FAILED.value
-            data.append(0x00)
-            data.append((self.direct << 4) + (self.status << 1) + 1)
-            data.append(0xFF)
-            data.append(0xFF)
-            data.append(self.error >> 8) 
-            data.append(self.error & 0xFF)
-            data.append(0xFF)
-            data.append(0xFF)
+            data[0] = 0x00
+            data[1] = ((self.direct << 4) + (self.status << 1) + 1)
+            data[self.length - 4] = (self.error >> 8) 
+            data[self.length - 3] = (self.error & 0xFF)
 
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
         )
         
+    def _send_dm16(self):
+        self._pgn = j1939.ParameterGroupNumber.PGN.DM16
+        data = []
+        byte_count = len(self.data)
+        data.append(0xFF if byte_count > 7 else byte_count)
+        for i in range(byte_count):
+            data.append(self.data[i])
+        data.extend([0xFF]*(self.length - byte_count - 1))
+        self._ca.send_pgn(
+            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
+        )
+
 
     def _parse_dm15(self, priority, pgn, sa, timestamp, data):
           if pgn != j1939.ParameterGroupNumber.PGN.DM14 or sa != self._dest_address:
@@ -302,11 +320,13 @@ class DM14Response:
             self._ca.subscribe(self._parse_dm14)
             self._send_dm15()
             self.data_queue.get(block=True, timeout=3)
-            if self.access_level != self._key_from_seed(self.seed): #BROKEN
+            if self.access_level != self._key_from_seed(self.seed):
                 self.proceed = False
                 self.error = 0x1000
         self.state = ResponseState.SEND_PROCEED
+        self._ca.unsubscribe(self._parse_dm14)
         self._send_dm15()
+        self._wait_for_data()
 #   def _parse_dm15(self, priority, pgn, sa, timestamp, data):
 #         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
 #             return
