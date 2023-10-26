@@ -246,7 +246,14 @@ class Dm14Query:
         else:
             return self._bytes_to_values(raw_bytes)
 
-    def write(self, dest_address: int, direct: int, address: int, values: list, object_byte_size: int = 1) -> None:
+    def write(
+        self,
+        dest_address: int,
+        direct: int,
+        address: int,
+        values: list,
+        object_byte_size: int = 1,
+    ) -> None:
         """
         Send a write query to dest_address, requesting to write values at address
         :param int dest_address: destination address of the message
@@ -295,7 +302,7 @@ class DM14Response:
 
     def _wait_for_data(self) -> None:
         """
-        Determines whether to send data or wait to receive data based on the command type. 
+        Determines whether to send data or wait to receive data based on the command type.
         If the command is a read command, then the data requested is sent.
         """
         if self.command is Command.READ.value:
@@ -308,7 +315,9 @@ class DM14Response:
             self.state = QueryState.WAIT_FOR_DM16
             self._ca.subscribe(self._parse_dm16)
 
-    def _parse_dm14(self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray) -> None:
+    def _parse_dm14(
+        self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
+    ) -> None:
         """
         parse DM14 message received
         :param int priority: priority of the message
@@ -329,7 +338,7 @@ class DM14Response:
 
     def _send_dm15(self) -> None:
         """
-        Send DM15 message to device, used to send the proceed message, 
+        Send DM15 message to device, used to send the proceed message,
         the generated seed, or the operation complete message
         """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM15
@@ -360,7 +369,7 @@ class DM14Response:
 
     def _send_dm16(self) -> None:
         """
-        Send DM16 message to device, used to send requested data 
+        Send DM16 message to device, used to send requested data
         """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM16
         data = []
@@ -373,7 +382,9 @@ class DM14Response:
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
         )
 
-    def _parse_dm16(self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray) -> None:
+    def _parse_dm16(
+        self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
+    ) -> None:
         """
         parse DM16 message received, used to parse data received write command
         :param int priority: priority of the message
@@ -415,7 +426,7 @@ class DM14Response:
         """
         self._key_from_seed = algorithm
 
-    def listen(self, receive_address: int, object_byte_size: int=1) -> None:
+    def listen(self, receive_address: int, object_byte_size: int = 1) -> None:
         """
         Listen for DM14 query to start a memory access operation
         :param int receive_address: address to listen for DM14 query from
@@ -437,7 +448,14 @@ class DM14Response:
             self.access_level,
         )
 
-    def respond(self, proceed: bool, data: list=[], error: int=0xFFFF, seed_override: bool=False, seed: int=0x01) -> int | None:
+    def respond(
+        self,
+        proceed: bool,
+        data: list = [],
+        error: int = 0xFFFF,
+        seed_override: bool = False,
+        seed: int = 0x01,
+    ) -> int | None:
         """
         Respond to DM14 query with the requested data or confimation of operation is good to proceed
         :param bool proceed: whether the operation is good to proceed
