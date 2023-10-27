@@ -3,7 +3,6 @@ import queue
 import sys
 import time
 import secrets
-from typing import Union
 import j1939
 
 
@@ -455,7 +454,7 @@ class DM14Response:
         error: int = 0xFFFF,
         seed_override: bool = False,
         seed: int = 0x01,
-    ) -> int | None:
+    ):
         """
         Respond to DM14 query with the requested data or confimation of operation is good to proceed
         :param bool proceed: whether the operation is good to proceed
