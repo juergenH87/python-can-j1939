@@ -4,7 +4,7 @@ import sys
 import time
 import secrets
 import j1939
-
+from error_info import ErrorInfo
 
 class QueryState(Enum):
     IDLE = 1
@@ -136,11 +136,11 @@ class Dm14Query:
             or status is Dm15Status.OPERATION_FAILED.value
         ):
             error = int.from_bytes(data[2:4], byteorder="little", signed=False)
+            edcp = data[5]
             self.data_queue.put(None)
-            if error == 0x1000:
-                raise RuntimeError("Key authentication error")
-            else:  # TODO parse error codes more granularly
-                raise RuntimeError(f"Device {sa} busy")
+            if edcp == 0x06 or edcp == 0x07:
+                raise RuntimeError(f"Device {sa} error: {ErrorInfo[error]}")
+
         length = data[0]
         if seed == 0xFFFF and length == self.object_count:
             self._wait_for_data()
@@ -348,20 +348,25 @@ class DM14Response:
                 data[0] = 0x00
                 if not self.seed_override:
                     self.seed = self.generate_seed()
+                data[self.length - 3] = self.edcp
                 data[self.length - 2] = self.seed & 0xFF
                 data[self.length - 1] = self.seed >> 8
             elif self.state == ResponseState.SEND_PROCEED:
+                data[self.length - 3] = self.edcp
                 data[0] = self.object_count
             else:
                 self.command = Command.OPERATION_COMPLETED.value
                 data[0] = 0x00
                 data[1] = (self.direct << 4) + (self.command << 1) + 1
+                data[self.length - 3] = self.edcp
         else:
             self.status = Dm15Status.OPERATION_FAILED.value
             data[0] = 0x00
             data[1] = (self.direct << 4) + (self.status << 1) + 1
-            data[self.length - 4] = self.error >> 8
-            data[self.length - 3] = self.error & 0xFF
+            data[self.length - 6] = self.error >> 16
+            data[self.length - 5] = (self.error >> 8) & 0xFF
+            data[self.length - 4] = self.error & 0xFF
+            data[self.length - 3] = self.edcp
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
         )
@@ -451,7 +456,8 @@ class DM14Response:
         self,
         proceed: bool,
         data: list = [],
-        error: int = 0xFFFF,
+        error: int = 0xFFFFFF,
+        edcp: int = 0x00,
         seed_override: bool = False,
         seed: int = 0x01,
     ) -> int:
@@ -460,12 +466,14 @@ class DM14Response:
         :param bool proceed: whether the operation is good to proceed
         :param list data: data to be sent to device
         :param int error: error code to be sent to device
+        :param int edcp: value for edcp extension
         :param bool seed_override: whether to override the seed value
         :param int seed: seed value to be sent to device
         """
         self.proceed = proceed
         self.data = data
         self.error = error
+        self.edcp = edcp
         self.seed_override = seed_override
         self.seed = seed
         self.status = Dm15Status.PROCEED.value
@@ -476,7 +484,7 @@ class DM14Response:
             self.data_queue.get(block=True, timeout=3)
             if self.access_level != self._key_from_seed(self.seed):
                 self.proceed = False
-                self.error = 0x1000
+                self.error = 0x1003
         self.state = ResponseState.SEND_PROCEED
         self._ca.unsubscribe(self._parse_dm14)
         self._send_dm15()
