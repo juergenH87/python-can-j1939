@@ -84,7 +84,7 @@ request_write_no_seed = [
 
 error = [
     (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00], 0.0), #DM14 read address 0x92000007
-    (Feeder.MsgType.CANRX, 0x1CD8F9D4, [0x01, 0x11, 0xFF, 0x04, 0x10, 0x07, 0xFF, 0xFF], 0.0), #DM15 proceed response
+    (Feeder.MsgType.CANRX, 0x1CD8F9D4, [0x01, 0x1B, 0x04, 0x10, 0xFF, 0x07, 0xFF, 0xFF], 0.0), #DM15 proceed response
 ]
 
 
@@ -181,12 +181,12 @@ def key_from_seed(seed):
 
 #     feeder.process_messages()
 
-@pytest.mark.parametrize(
-    argnames=["expected_messages"],
-    argvalues=[[read_with_seed_key], [read_no_seed_key]],
-    ids=["With seed key", "Without seed key"],
-)
-def test_dm14_read(feeder, expected_messages):
+# @pytest.mark.parametrize(
+#     argnames=["expected_messages"],
+#     argvalues=[[read_with_seed_key], [read_no_seed_key]],
+#     ids=["With seed key", "Without seed key"],
+# )
+def test_dm14_read(feeder):
     feeder.can_messages = error
     feeder.pdus_from_messages()
 
@@ -196,7 +196,7 @@ def test_dm14_read(feeder, expected_messages):
 
     dm14 = j1939.Dm14Query(ca)
 
-    dm14.read(0xD4, 1, 0x92000003, 1)
+    print(dm14.read(0xD4, 1, 0x92000003, 1))
 
     feeder.process_messages()
 # TODO: moar test

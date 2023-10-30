@@ -127,6 +127,7 @@ class Dm14Query:
         :param int timestamp: timestamp of the message
         :param bytearray data: data of the PDU
         """
+        print("dm15")
         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
             return
         seed = (data[7] << 8) + data[6]
@@ -139,7 +140,7 @@ class Dm14Query:
             edcp = data[5]
             self.data_queue.put(None)
             if edcp == 0x06 or edcp == 0x07:
-                raise RuntimeError(f"Device {sa} error: {ErrorInfo[error]}")
+                raise RuntimeError(f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error]}")
 
         length = data[0]
         if seed == 0xFFFF and length == self.object_count:
