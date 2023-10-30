@@ -4,7 +4,7 @@ import sys
 import time
 import secrets
 import j1939
-from error_info import ErrorInfo
+
 
 class QueryState(Enum):
     IDLE = 1
