@@ -152,7 +152,7 @@ def test_dm14_request_read(feeder, expected_messages):
     dm14.listen(0xF9, 1)
     if expected_messages == request_read_with_seed:
         dm14.set_seed_key_algorithm(key_from_seed)
-        dm14.respond(True, [0x01], 0xFFFF, True, 0xA55A)
+        dm14.respond(True, [0x01], 0xFFFF, 0xFF, True, 0xA55A)
     else:
         dm14.respond(True, [0x01], 0xFFFF)
 
@@ -175,7 +175,7 @@ def test_dm14_request_write(feeder, expected_messages):
     values = 0x11223344
     if expected_messages == request_write_with_seed:
         dm14.set_seed_key_algorithm(key_from_seed)
-        assert values == dm14.respond(True, [], 0xFFFF, True, 0xA55A)
+        assert values == dm14.respond(True, [], 0xFFFF, 0xFF, True, 0xA55A)
     else:
         assert values == dm14.respond(True, [], 0xFFFF)
 

@@ -462,7 +462,7 @@ class DM14Response:
         proceed: bool,
         data: list = [],
         error: int = 0xFFFFFF,
-        edcp: int = 0x00,
+        edcp: int = 0xFF,
         seed_override: bool = False,
         seed: int = 0x01,
     ) -> int:
