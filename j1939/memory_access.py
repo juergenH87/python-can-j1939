@@ -57,7 +57,7 @@ class Dm14Query:
         self._seed_from_key = None
         self.data_queue = queue.Queue()
         self.mem_data = None
-
+        self.exception_queue = queue.Queue()
     def _wait_for_data(self) -> None:
         """
         Determines whether to send data or wait to receive data based on the command type. If the command is a write command, then the data is sent.
@@ -127,7 +127,6 @@ class Dm14Query:
         :param int timestamp: timestamp of the message
         :param bytearray data: data of the PDU
         """
-        print("dm15")
         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
             return
         seed = (data[7] << 8) + data[6]
@@ -140,8 +139,8 @@ class Dm14Query:
             edcp = data[5]
             self.data_queue.put(None)
             if edcp == 0x06 or edcp == 0x07:
-                raise RuntimeError(f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error]}")
-
+                self.exception_queue.put(RuntimeError(f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error]}"))
+                
         length = data[0]
         if seed == 0xFFFF and length == self.object_count:
             self._wait_for_data()
@@ -157,9 +156,9 @@ class Dm14Query:
                     self._send_dm14(self._seed_from_key(seed))
                 else:
                     self.data_queue.put(None)
-                    raise RuntimeError(
+                    self.exception_queue.put(RuntimeError(
                         "Key requested from host but no seed-key algorithm has been provided"
-                    )
+                    ))
 
     def _parse_dm16(
         self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
@@ -241,10 +240,15 @@ class Dm14Query:
         self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
         raw_bytes = self.data_queue.get(block=True, timeout=1)
-        if self.return_raw_bytes:
-            return raw_bytes
+        for _ in range(self.exception_queue.qsize()):
+            raise self.exception_queue.get(block=False, timeout=1)
+        if raw_bytes:
+            if self.return_raw_bytes:
+                return raw_bytes
+            else:
+                return self._bytes_to_values(raw_bytes)
         else:
-            return self._bytes_to_values(raw_bytes)
+            return None
 
     def write(
         self,
