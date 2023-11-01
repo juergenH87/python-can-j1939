@@ -143,7 +143,7 @@ class Dm14Query:
             if edcp == 0x06 or edcp == 0x07:
                 self.exception_queue.put(
                     RuntimeError(
-                        f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error]}"
+                        f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error] if error in j1939.error_info.ErrorInfo else 'Error not defined'}"
                     )
                 )
         else:
