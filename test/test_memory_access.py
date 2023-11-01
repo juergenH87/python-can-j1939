@@ -98,6 +98,11 @@ def get_error():
     ids=["With seed key", "Without seed key"],
 )
 def test_dm14_read(feeder, expected_messages):
+    """
+    Tests the DM14 read query function
+    :param feeder: can message feeder
+    :param expected_messages: list of expected messages
+    """
     feeder.can_messages = expected_messages
     feeder.pdus_from_messages()
 
@@ -119,6 +124,11 @@ def test_dm14_read(feeder, expected_messages):
     ids=["With seed key", "Without seed key"],
 )
 def test_dm14_write(feeder, expected_messages):
+    """
+    Tests the DM14 write query function 
+    :param feeder: can message feeder
+    :param expected_messages: list of expected messages
+    """
     feeder.can_messages = expected_messages
     feeder.pdus_from_messages()
 
@@ -140,6 +150,11 @@ def test_dm14_write(feeder, expected_messages):
     ids=["With seed key", "Without seed key"],
 )
 def test_dm14_request_read(feeder, expected_messages):
+    """
+    Tests the DM14 response to read query function
+    :param feeder: can message feeder
+    :param expected_messages: list of expected messages
+    """
     feeder.can_messages = expected_messages
     feeder.pdus_from_messages()
     ca = feeder.accept_all_messages(
@@ -169,6 +184,11 @@ def test_dm14_request_read(feeder, expected_messages):
     ids=["With seed key", "Without seed key"],
 )
 def test_dm14_request_write(feeder, expected_messages):
+    """
+    Tests the DM14 response to write query function
+    :param feeder: can message feeder
+    :param expected_messages: list of expected messages
+    """
     feeder.can_messages = expected_messages
     feeder.pdus_from_messages()
     ca = feeder.accept_all_messages(
@@ -198,6 +218,11 @@ def test_dm14_request_write(feeder, expected_messages):
     get_error(),
 )
 def test_dm14_read_error(feeder, error_code):
+    """
+    Tests that the DM14 read query can react to errors correctly
+    :param feeder: can message feeder
+    :param error_code: error code to test
+    """
     with pytest.raises(RuntimeError) as excinfo:
         feeder.can_messages = [
             (
@@ -241,6 +266,11 @@ def test_dm14_read_error(feeder, error_code):
     get_error(),
 )
 def test_dm14_write_error(feeder, error_code):
+    """
+    Tests that the DM14 write query can react to errors correctly
+    :param feeder: can message feeder
+    :param error_code: error code to test
+    """
     with pytest.raises(RuntimeError) as excinfo:
         feeder.can_messages = [
             (
