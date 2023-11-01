@@ -58,6 +58,7 @@ class Dm14Query:
         self.data_queue = queue.Queue()
         self.mem_data = None
         self.exception_queue = queue.Queue()
+
     def _wait_for_data(self) -> None:
         """
         Determines whether to send data or wait to receive data based on the command type. If the command is a write command, then the data is sent.
@@ -130,35 +131,42 @@ class Dm14Query:
         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
             return
         seed = (data[7] << 8) + data[6]
+
         status = (data[1] >> 1) & 7
         if (
             status is Dm15Status.BUSY.value
             or status is Dm15Status.OPERATION_FAILED.value
         ):
-            error = int.from_bytes(data[2:4], byteorder="little", signed=False)
+            error = int.from_bytes(data[2:5], byteorder="little", signed=False)
             edcp = data[5]
             self.data_queue.put(None)
             if edcp == 0x06 or edcp == 0x07:
-                self.exception_queue.put(RuntimeError(f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error]}"))
-                
-        length = data[0]
-        if seed == 0xFFFF and length == self.object_count:
-            self._wait_for_data()
+                self.exception_queue.put(
+                    RuntimeError(
+                        f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error]}"
+                    )
+                )
         else:
-            if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
-                assert status is Command.OPERATION_COMPLETED.value
-                self._send_operation_complete()
-                self.state = QueryState.IDLE
-                self.data_queue.put(self.mem_data)
+            length = data[0]
+            if seed == 0xFFFF and length == self.object_count:
+                self._wait_for_data()
             else:
-                assert self.state is QueryState.WAIT_FOR_SEED
-                if self._seed_from_key is not None:
-                    self._send_dm14(self._seed_from_key(seed))
+                if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
+                    assert status is Command.OPERATION_COMPLETED.value
+                    self._send_operation_complete()
+                    self.state = QueryState.IDLE
+                    self.data_queue.put(self.mem_data)
                 else:
-                    self.data_queue.put(None)
-                    self.exception_queue.put(RuntimeError(
-                        "Key requested from host but no seed-key algorithm has been provided"
-                    ))
+                    assert self.state is QueryState.WAIT_FOR_SEED
+                    if self._seed_from_key is not None:
+                        self._send_dm14(self._seed_from_key(seed))
+                    else:
+                        self.data_queue.put(None)
+                        self.exception_queue.put(
+                            RuntimeError(
+                                "Key requested from host but no seed-key algorithm has been provided"
+                            )
+                        )
 
     def _parse_dm16(
         self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
@@ -279,6 +287,8 @@ class Dm14Query:
         # wait for operation completed DM15 message
         try:
             self.data_queue.get(block=True, timeout=1)
+            for _ in range(self.exception_queue.qsize()):
+                raise self.exception_queue.get(block=False, timeout=1)
         except queue.Empty:
             pass  # expect empty queue for write
 
@@ -368,9 +378,9 @@ class DM14Response:
             self.status = Dm15Status.OPERATION_FAILED.value
             data[0] = 0x00
             data[1] = (self.direct << 4) + (self.status << 1) + 1
-            data[self.length - 6] = self.error >> 16
+            data[self.length - 6] = self.error & 0xFF
             data[self.length - 5] = (self.error >> 8) & 0xFF
-            data[self.length - 4] = self.error & 0xFF
+            data[self.length - 4] = self.error >> 16
             data[self.length - 3] = self.edcp
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
