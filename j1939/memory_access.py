@@ -383,7 +383,7 @@ class DM14Response:
             data[self.length - 4] = self.error >> 16
             data[self.length - 3] = self.edcp
         self._ca.send_pgn(
-            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
+            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
         )
 
     def _send_dm16(self) -> None:
