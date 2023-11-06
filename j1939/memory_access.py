@@ -2,7 +2,7 @@ from enum import Enum
 import queue
 import sys
 import time
-
+import secrets
 import j1939
 
 
@@ -24,6 +24,13 @@ class Command(Enum):
     EDCP_GENERATION = 7
 
 
+class ResponseState(Enum):
+    IDLE = 1
+    WAIT_FOR_DM14 = 2
+    WAIT_FOR_KEY = 3
+    SEND_PROCEED = 4
+
+
 class ReceiveState(Enum):
     IDLE = 1
     WAIT_FOR_KEY = 2
@@ -38,7 +45,7 @@ class Dm15Status(Enum):
 
 
 class Dm14Query:
-    def __init__(self, ca: j1939.ControllerApplication):
+    def __init__(self, ca: j1939.ControllerApplication) -> None:
         """
         performs memory access queries using DM14-DM18 messaging.  Presently only read queries are supported
 
@@ -50,8 +57,13 @@ class Dm14Query:
         self._seed_from_key = None
         self.data_queue = queue.Queue()
         self.mem_data = None
+        self.exception_queue = queue.Queue()
 
-    def _wait_for_data(self):
+    def _wait_for_data(self) -> None:
+        """
+        Determines whether to send data or wait to receive data based on the command type. If the command is a write command, then the data is sent.
+        If the command is a read command, then the device waits to receive data.
+        """
         assert self.state is QueryState.WAIT_FOR_SEED
         if self.command is Command.WRITE:
             self._send_dm16()
@@ -61,12 +73,21 @@ class Dm14Query:
             self._ca.unsubscribe(self._parse_dm15)
             self._ca.subscribe(self._parse_dm16)
 
-    def _send_operation_complete(self):
+    def _send_operation_complete(self) -> None:
+        """
+        Send DM14 message to confirm the operation is complete
+        """
         self.object_count = 1
         self.command = Command.OPERATION_COMPLETED
         self._send_dm14(0xFFFF)
 
-    def _send_dm14(self, key_or_user_level):
+    def _send_dm14(self, key_or_user_level: int) -> None:
+        """
+        Send DM14 message to device, used to initialize a memory access operation,
+        respond with a key when needed, and to confirm the operation is complete
+
+        :param int key_or_user_level: key or user level
+        """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM14
         pointer = self.address.to_bytes(length=4, byteorder="little")
         data = []
@@ -82,7 +103,10 @@ class Dm14Query:
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
         )
 
-    def _send_dm16(self):
+    def _send_dm16(self) -> None:
+        """
+        Send DM16 message to device, used to send data to the device
+        """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM16
         data = []
         byte_count = len(self.bytes)
@@ -93,38 +117,68 @@ class Dm14Query:
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
         )
 
-    def _parse_dm15(self, priority, pgn, sa, timestamp, data):
+    def _parse_dm15(
+        self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
+    ) -> None:
+        """
+        Parse DM15 message from device, used to determine whether device is ready, or if operation has completed and to receive seed from device
+        :param int priority: priority of the message
+        :param int pgn: parameter group number of the message
+        :param int sa: source address of the message
+        :param int timestamp: timestamp of the message
+        :param bytearray data: data of the PDU
+        """
         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
             return
         seed = (data[7] << 8) + data[6]
-        status = (data[1] >> 1) & 7
-        if status is Dm15Status.BUSY.value or status is Dm15Status.OPERATION_FAILED:
-            error = int.from_bytes(data[2:4], byteorder="little", signed=False)
-            self.data_queue.put(None)
-            if error == 0x1000:
-                raise RuntimeError("Key authentication error")
-            else:  # TODO parse error codes more granularly
-                raise RuntimeError(f"Device {sa} busy")
-        length = data[0]
-        if seed == 0xFFFF and length == self.object_count:
-            self._wait_for_data()
-        else:
-            if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
-                assert status is Command.OPERATION_COMPLETED.value
-                self._send_operation_complete()
-                self.state = QueryState.IDLE
-                self.data_queue.put(self.mem_data)
-            else:
-                assert self.state is QueryState.WAIT_FOR_SEED
-                if self._seed_from_key is not None:
-                    self._send_dm14(self._seed_from_key(seed))
-                else:
-                    self.data_queue.put(None)
-                    raise RuntimeError(
-                        "Key requested from host but no seed-key algorithm has been provided"
-                    )
 
-    def _parse_dm16(self, priority, pgn, sa, timestamp, data):
+        status = (data[1] >> 1) & 7
+        if (
+            status is Dm15Status.BUSY.value
+            or status is Dm15Status.OPERATION_FAILED.value
+        ):
+            error = int.from_bytes(data[2:5], byteorder="little", signed=False)
+            edcp = data[5]
+            self.data_queue.put(None)
+            if edcp == 0x06 or edcp == 0x07:
+                self.exception_queue.put(
+                    RuntimeError(
+                        f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error] if error in j1939.error_info.ErrorInfo else 'Error not defined'}"
+                    )
+                )
+        else:
+            length = data[0]
+            if seed == 0xFFFF and length == self.object_count:
+                self._wait_for_data()
+            else:
+                if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
+                    assert status is Command.OPERATION_COMPLETED.value
+                    self._send_operation_complete()
+                    self.state = QueryState.IDLE
+                    self.data_queue.put(self.mem_data)
+                else:
+                    assert self.state is QueryState.WAIT_FOR_SEED
+                    if self._seed_from_key is not None:
+                        self._send_dm14(self._seed_from_key(seed))
+                    else:
+                        self.data_queue.put(None)
+                        self.exception_queue.put(
+                            RuntimeError(
+                                "Key requested from host but no seed-key algorithm has been provided"
+                            )
+                        )
+
+    def _parse_dm16(
+        self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
+    ) -> None:
+        """
+        parse DM16 message received from device, used to parse data received from device on a read command
+        :param int priority: priority of the message
+        :param int pgn: parameter group number of the message
+        :param int sa: source address of the message
+        :param int timestamp: timestamp of the message
+        :param bytearray data: data of the PDU
+        """
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self._dest_address:
             return
         length = min(data[0], len(data) - 1)
@@ -134,13 +188,21 @@ class Dm14Query:
         self._ca.subscribe(self._parse_dm15)
         self.state = QueryState.WAIT_FOR_OPER_COMPLETE
 
-    def _values_to_bytes(self, values):
+    def _values_to_bytes(self, values: list) -> bytearray:
+        """
+        convert values to bytes for sending to device
+        :param list values: values to be converted to bytes
+        """
         bytes = []
         for val in values:
             bytes.extend(val.to_bytes(self.object_byte_size, byteorder="little"))
         return bytes
 
-    def _bytes_to_values(self, raw_bytes):
+    def _bytes_to_values(self, raw_bytes: bytearray) -> list:
+        """
+        convert bytes received from device to values
+        :param bytearray raw_bytes: bytes received from device
+        """
         values = []
         for i in range(len(raw_bytes) // self.object_byte_size):
             values.append(
@@ -154,14 +216,24 @@ class Dm14Query:
 
     def read(
         self,
-        dest_address,
-        direct,
-        address,
-        object_count,
-        object_byte_size=1,
-        signed=False,
-        return_raw_bytes=False,
-    ):
+        dest_address: int,
+        direct: int,
+        address: int,
+        object_count: int,
+        object_byte_size: int = 1,
+        signed: bool = False,
+        return_raw_bytes: bool = False,
+    ) -> list:
+        """
+        Send a read query to dest_address, requesting data at address
+        :param int dest_address: destination address of the message
+        :param int direct: direct address of the message
+        :param int address: address of the message
+        :param int object_count: number of objects to be read
+        :param int object_byte_size: size of each object in bytes
+        :param bool signed: whether the data is signed
+        :param bool return_raw_bytes: whether to return raw bytes or values
+        """
         assert object_count > 0
         self._dest_address = dest_address
         self.direct = direct
@@ -176,12 +248,32 @@ class Dm14Query:
         self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
         raw_bytes = self.data_queue.get(block=True, timeout=1)
-        if self.return_raw_bytes:
-            return raw_bytes
+        for _ in range(self.exception_queue.qsize()):
+            raise self.exception_queue.get(block=False, timeout=1)
+        if raw_bytes:
+            if self.return_raw_bytes:
+                return raw_bytes
+            else:
+                return self._bytes_to_values(raw_bytes)
         else:
-            return self._bytes_to_values(raw_bytes)
+            return None
 
-    def write(self, dest_address, direct, address, values, object_byte_size=1):
+    def write(
+        self,
+        dest_address: int,
+        direct: int,
+        address: int,
+        values: list,
+        object_byte_size: int = 1,
+    ) -> None:
+        """
+        Send a write query to dest_address, requesting to write values at address
+        :param int dest_address: destination address of the message
+        :param int direct: direct address of the message
+        :param int address: address of the message
+        :param list values: values to be written
+        :param int object_byte_size: size of each object in bytes
+        """
         self._dest_address = dest_address
         self.direct = direct
         self.address = address
@@ -195,11 +287,222 @@ class Dm14Query:
         # wait for operation completed DM15 message
         try:
             self.data_queue.get(block=True, timeout=1)
+            for _ in range(self.exception_queue.qsize()):
+                raise self.exception_queue.get(block=False, timeout=1)
         except queue.Empty:
             pass  # expect empty queue for write
 
-    def set_seed_key_algorithm(self, algorithm):
+    def set_seed_key_algorithm(self, algorithm: callable) -> None:
+        """
+        set seed-key algorithm to be used for key generation
+        :param callable algorithm: seed-key algorithm
+        """
         self._seed_from_key = algorithm
 
-    def set_seed_key_algorithm(self, algorithm):
-        self._seed_from_key = algorithm
+
+class DM14Response:
+    def __init__(self, ca: j1939.ControllerApplication) -> None:
+        """
+        performs memory access responses using DM14-DM18 messaging.
+
+        :param obj ca: j1939 controller application
+        """
+
+        self._ca = ca
+        self.state = QueryState.IDLE
+        self._key_from_seed = None
+        self.data_queue = queue.Queue()
+        self.mem_data = None
+
+    def _wait_for_data(self) -> None:
+        """
+        Determines whether to send data or wait to receive data based on the command type.
+        If the command is a read command, then the data requested is sent.
+        """
+        if self.command is Command.READ.value:
+            self._send_dm16()
+            self.proceed = True
+            self.state = QueryState.WAIT_FOR_OPER_COMPLETE
+            self._ca.subscribe(self._parse_dm14)
+            self._send_dm15()
+        else:
+            self.state = QueryState.WAIT_FOR_DM16
+            self._ca.subscribe(self._parse_dm16)
+
+    def _parse_dm14(
+        self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
+    ) -> None:
+        """
+        parse DM14 message received
+        :param int priority: priority of the message
+        :param int pgn: parameter group number of the message
+        :param int sa: source address of the message
+        :param int timestamp: timestamp of the message
+        :param bytearray data: data of the PDU
+        """
+        if pgn != j1939.ParameterGroupNumber.PGN.DM14 or sa != self._dest_address:
+            return
+        self.length = len(data)
+        self.address = data[2 : (self.length - 2)]
+        self.direct = data[1] >> 4
+        self.command = ((data[1] - 1) & 0x0F) >> 1
+        self.object_count = data[0]
+        self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
+        self.data_queue.put(data)
+
+    def _send_dm15(self) -> None:
+        """
+        Send DM15 message to device, used to send the proceed message,
+        the generated seed, or the operation complete message
+        """
+        self._pgn = j1939.ParameterGroupNumber.PGN.DM15
+        data = [0xFF] * self.length
+        if self.proceed:
+            data[1] = (self.direct << 4) + (self.status << 1) + 1
+            if self.state == ResponseState.WAIT_FOR_KEY:
+                data[0] = 0x00
+                if not self.seed_override:
+                    self.seed = self.generate_seed()
+                data[self.length - 3] = self.edcp
+                data[self.length - 2] = self.seed & 0xFF
+                data[self.length - 1] = self.seed >> 8
+            elif self.state == ResponseState.SEND_PROCEED:
+                data[self.length - 3] = self.edcp
+                data[0] = self.object_count
+            else:
+                self.command = Command.OPERATION_COMPLETED.value
+                data[0] = 0x00
+                data[1] = (self.direct << 4) + (self.command << 1) + 1
+                data[self.length - 3] = self.edcp
+        else:
+            self.status = Dm15Status.OPERATION_FAILED.value
+            data[0] = 0x00
+            data[1] = (self.direct << 4) + (self.status << 1) + 1
+            data[self.length - 6] = self.error & 0xFF
+            data[self.length - 5] = (self.error >> 8) & 0xFF
+            data[self.length - 4] = self.error >> 16
+            data[self.length - 3] = self.edcp
+        self._ca.send_pgn(
+            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
+        )
+
+    def _send_dm16(self) -> None:
+        """
+        Send DM16 message to device, used to send requested data
+        """
+        self._pgn = j1939.ParameterGroupNumber.PGN.DM16
+        data = []
+        byte_count = len(self.data)
+        data.append(0xFF if byte_count > 7 else byte_count)
+        for i in range(byte_count):
+            data.append(self.data[i])
+        data.extend([0xFF] * (self.length - byte_count - 1))
+        self._ca.send_pgn(
+            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
+        )
+
+    def _parse_dm16(
+        self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
+    ) -> None:
+        """
+        parse DM16 message received, used to parse data received write command
+        :param int priority: priority of the message
+        :param int pgn: parameter group number of the message
+        :param int sa: source address of the message
+        :param int timestamp: timestamp of the message
+        :param bytearray data: data of the PDU
+        """
+        if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self._dest_address:
+            return
+        length = min(data[0], len(data) - 1)
+        # assert object_count == self.object_count
+        self.mem_data = data[1 : length + 1]
+        self._ca.unsubscribe(self._parse_dm16)
+        self._ca.subscribe(self._parse_dm14)
+        self.state = QueryState.WAIT_FOR_OPER_COMPLETE
+        self._send_dm15()
+
+    def bytes_to_int(self, data: bytearray) -> int:
+        """
+        Convert bytesaray to integer
+        :param bytearray data: bytearray to be converted to integer
+        """
+        return int.from_bytes(data, byteorder="little", signed=False)
+
+    def generate_seed(self) -> int:
+        """
+        Generte a random seed value for key generation
+        """
+        seed = secrets.randbits(16)
+        if (seed == 0xFFFF) or (seed == 0x0000):
+            seed = 0xBEEF
+        return seed
+
+    def set_seed_key_algorithm(self, algorithm: callable) -> None:
+        """
+        Set seed key algorithm to be used for key generation
+        param: callable algorithm: seed-key algorithm
+        """
+        self._key_from_seed = algorithm
+
+    def listen(self, receive_address: int, object_byte_size: int = 1) -> None:
+        """
+        Listen for DM14 query to start a memory access operation
+        :param int receive_address: address to listen for DM14 query from
+        :param int object_byte_size: size of each object in bytes
+        """
+        self._dest_address = receive_address
+        self.object_byte_size = object_byte_size
+        self._ca.subscribe(self._parse_dm14)
+        self.state = ResponseState.WAIT_FOR_DM14
+
+        # wait for DM14 query to arrive
+        self.data_queue.get(block=True, timeout=None)
+        self._ca.unsubscribe(self._parse_dm14)
+        return (
+            self.address,
+            self.command,
+            self.direct,
+            self.object_count,
+            self.access_level,
+        )
+
+    def respond(
+        self,
+        proceed: bool,
+        data: list = [],
+        error: int = 0xFFFFFF,
+        edcp: int = 0xFF,
+        seed_override: bool = False,
+        seed: int = 0x01,
+    ) -> int:
+        """
+        Respond to DM14 query with the requested data or confimation of operation is good to proceed
+        :param bool proceed: whether the operation is good to proceed
+        :param list data: data to be sent to device
+        :param int error: error code to be sent to device
+        :param int edcp: value for edcp extension
+        :param bool seed_override: whether to override the seed value
+        :param int seed: seed value to be sent to device
+        """
+        self.proceed = proceed
+        self.data = data
+        self.error = error
+        self.edcp = edcp
+        self.seed_override = seed_override
+        self.seed = seed
+        self.status = Dm15Status.PROCEED.value
+        if self._key_from_seed is not None:
+            self.state = ResponseState.WAIT_FOR_KEY
+            self._ca.subscribe(self._parse_dm14)
+            self._send_dm15()
+            self.data_queue.get(block=True, timeout=3)
+            if self.access_level != self._key_from_seed(self.seed):
+                self.proceed = False
+                self.error = 0x1003
+        self.state = ResponseState.SEND_PROCEED
+        self._ca.unsubscribe(self._parse_dm14)
+        self._send_dm15()
+        self._wait_for_data()
+        self.data_queue.get(block=True, timeout=3)
+        return self.bytes_to_int(self.mem_data) if self.mem_data is not None else None
