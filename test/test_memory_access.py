@@ -224,10 +224,28 @@ def test_dm14_read_error(feeder, error_code):
     :param error_code: error code to test
     """
     with pytest.raises(RuntimeError) as excinfo:
-
         feeder.can_messages = [
-            (Feeder.MsgType.CANTX,0x18D9D4F9,[0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00],0.0),  # DM14 read address 0x92000007
-            (Feeder.MsgType.CANRX,0x18D8F9D4,[0x01,0x1B,(error_code & 0xFF),((error_code >> 8) & 0xFF),(error_code >> 16),0x07,0xFF,0xFF,],0.0),  # DM15 proceed response
+            (
+                Feeder.MsgType.CANTX,
+                0x18D9D4F9,
+                [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00],
+                0.0,
+            ),  # DM14 read address 0x92000007
+            (
+                Feeder.MsgType.CANRX,
+                0x18D8F9D4,
+                [
+                    0x01,
+                    0x1B,
+                    (error_code & 0xFF),
+                    ((error_code >> 8) & 0xFF),
+                    (error_code >> 16),
+                    0x07,
+                    0xFF,
+                    0xFF,
+                ],
+                0.0,
+            ),  # DM15 proceed response
         ]
 
         feeder.pdus_from_messages()
@@ -254,10 +272,28 @@ def test_dm14_write_error(feeder, error_code):
     :param error_code: error code to test
     """
     with pytest.raises(RuntimeError) as excinfo:
-
         feeder.can_messages = [
-            (Feeder.MsgType.CANTX,0x18D9D4F9,[0x01, 0x15, 0x07, 0x00, 0x00, 0x91, 0x07, 0x00],0.0),  # DM14 write address 0x91000007
-            (Feeder.MsgType.CANRX,0x18D8F9D4,[0x01,0x1B,(error_code & 0xFF),((error_code >> 8) & 0xFF),(error_code >> 16),0x07,0xFF,0xFF,],0.0),  # DM15 proceed response
+            (
+                Feeder.MsgType.CANTX,
+                0x18D9D4F9,
+                [0x01, 0x15, 0x07, 0x00, 0x00, 0x91, 0x07, 0x00],
+                0.0,
+            ),  # DM14 write address 0x91000007
+            (
+                Feeder.MsgType.CANRX,
+                0x18D8F9D4,
+                [
+                    0x01,
+                    0x1B,
+                    (error_code & 0xFF),
+                    ((error_code >> 8) & 0xFF),
+                    (error_code >> 16),
+                    0x07,
+                    0xFF,
+                    0xFF,
+                ],
+                0.0,
+            ),  # DM15 proceed response
         ]
 
         feeder.pdus_from_messages()
