@@ -30,7 +30,9 @@ class ResponseState(Enum):
     WAIT_FOR_KEY = 3
     SEND_PROCEED = 4
     SEND_OPERATION_COMPLETE = 5
-    SEND_ERROR = 6
+    WAIT_OPERATION_COMPLETE = 6
+    SEND_ERROR = 7
+    WAIT_FOR_DM16 = 8
 
 
 class ReceiveState(Enum):
@@ -56,10 +58,11 @@ class DM14Response:
 
         self._ca = ca
         self.sa = None
-        self.state = QueryState.IDLE
+        self.state = ResponseState.IDLE
         self._key_from_seed = None
         self.data_queue = queue.Queue()
         self.mem_data = None
+        self._seed_generator = self.generate_seed
 
     def _wait_for_data(self) -> None:
         """
@@ -69,11 +72,11 @@ class DM14Response:
         if self.command is Command.READ.value:
             self._send_dm16()
             self.proceed = True
-            self.state = QueryState.WAIT_FOR_OPER_COMPLETE
+            self.state = ResponseState.SEND_OPERATION_COMPLETE
             self._ca.subscribe(self._parse_dm14)
             self._send_dm15()
         else:
-            self.state = QueryState.WAIT_FOR_DM16
+            self.state = ResponseState.WAIT_FOR_DM16
             self._ca.subscribe(self._parse_dm16)
 
     def _parse_dm14(
@@ -91,21 +94,42 @@ class DM14Response:
             return
         if self.sa is not None and sa != self.sa:
             return
-        if self.state is ResponseState.IDLE:
-            self.pgn = pgn
-            self.sa = sa
-            self.length = len(data)
-            self.address = data[2 : (self.length - 2)]
-            self.direct = data[1] >> 4
-            self.command = ((data[1] - 1) & 0x0F) >> 1
-            self.object_count = data[0]
-            self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
-            self.data_queue.put(data)
-            self.state = ResponseState.WAIT_FOR_KEY
-            self._send_dm15()
-        else:
-            self.length = len(data)
-            self.key = (data[self.length - 1] << 8) + data[self.length - 2]
+
+        self.length = len(data)
+        self.direct = data[1] >> 4
+        match self.state:
+            case ResponseState.IDLE:
+                self.pgn = pgn
+                self.sa = sa
+
+                self.address = data[2 : (self.length - 2)]
+                self.direct = data[1] >> 4
+                self.command = ((data[1] - 1) & 0x0F) >> 1
+                self.object_count = data[0]
+                self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
+                self.data_queue.put(data)
+                if self._key_from_seed is not None:
+                    print("howdy")
+                    self.state = ResponseState.WAIT_FOR_KEY
+                    print(self.state)
+                    self._send_dm15()
+                else:
+                    self.state = ResponseState.SEND_PROCEED
+
+            case ResponseState.WAIT_FOR_KEY:
+                self.length = len(data)
+                self.address = data[2 : (self.length - 2)]
+                self.command = ((data[1] - 1) & 0x0F) >> 1
+                self.object_count = data[0]
+                self.key = (data[self.length - 1] << 8) + data[self.length - 2]
+                self.data_queue.put(data)
+
+            case ResponseState.WAIT_OPERATION_COMPLETE:
+                self.state = ResponseState.IDLE
+                self._ca.unsubscribe(self._parse_dm14)
+
+            case _:
+                print("Invalid state")
 
     def _send_dm15(self) -> None:
         """
@@ -115,32 +139,37 @@ class DM14Response:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM15
         data = [0xFF] * self.length
         data[1] = (self.direct << 4) + (self.status << 1) + 1
-        if self.state == ResponseState.WAIT_FOR_KEY:
-            data[0] = 0x00
-            if not self.seed_override:
-                self.seed = self.generate_seed()
-            data[self.length - 3] = self.edcp
-            data[self.length - 2] = self.seed & 0xFF
-            data[self.length - 1] = self.seed >> 8
-        elif self.state == ResponseState.SEND_PROCEED:
-            data[self.length - 3] = self.edcp
-            data[0] = self.object_count
-        elif self.state == ResponseState.SEND_OPERATION_COMPLETE:
-            self.command = Command.OPERATION_COMPLETED.value
-            data[0] = 0x00
-            data[1] = (self.direct << 4) + (self.command << 1) + 1
-            data[self.length - 3] = self.edcp
-        else:
-            self.status = Dm15Status.OPERATION_FAILED.value
-            data[0] = 0x00
-            data[1] = (self.direct << 4) + (self.status << 1) + 1
-            data[self.length - 6] = self.error & 0xFF
-            data[self.length - 5] = (self.error >> 8) & 0xFF
-            data[self.length - 4] = self.error >> 16
-            data[self.length - 3] = self.edcp
-        self._ca.send_pgn(
-            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
-        )
+        print(self.state)
+
+        match self.state:
+            case ResponseState.WAIT_FOR_KEY:
+                self.seed = self._seed_generator()
+                print(self.seed)
+                data[0] = 0x00
+                data[self.length - 3] = self.edcp
+                data[self.length - 2] = self.seed & 0xFF
+                data[self.length - 1] = self.seed >> 8
+            case ResponseState.SEND_PROCEED:
+                data[self.length - 3] = self.edcp
+                data[0] = self.object_count
+            case ResponseState.SEND_OPERATION_COMPLETE:
+                self.command = Command.OPERATION_COMPLETED.value
+                data[0] = 0x00
+                data[1] = (self.direct << 4) + (self.command << 1) + 1
+                data[self.length - 3] = self.edcp
+                self.state = ResponseState.WAIT_OPERATION_COMPLETE
+            case ResponseState.SEND_ERROR:
+                self.status = Dm15Status.OPERATION_FAILED.value
+                data[0] = 0x00
+                data[1] = (self.direct << 4) + (self.status << 1) + 1
+                data[self.length - 6] = self.error & 0xFF
+                data[self.length - 5] = (self.error >> 8) & 0xFF
+                data[self.length - 4] = self.error >> 16
+                data[self.length - 3] = self.edcp
+            case _:
+                raise ValueError("Invalid state")
+        print(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 6, data)
+        self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 6, data)
 
     def _send_dm16(self) -> None:
         """
@@ -153,9 +182,8 @@ class DM14Response:
         for i in range(byte_count):
             data.append(self.data[i])
         data.extend([0xFF] * (self.length - byte_count - 1))
-        self._ca.send_pgn(
-            0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 7, data
-        )
+        print(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 7, data)
+        self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 7, data)
 
     def _parse_dm16(
         self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
@@ -168,14 +196,14 @@ class DM14Response:
         :param int timestamp: timestamp of the message
         :param bytearray data: data of the PDU
         """
-        if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self._dest_address:
+        if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self.sa:
             return
         length = min(data[0], len(data) - 1)
         # assert object_count == self.object_count
         self.mem_data = data[1 : length + 1]
         self._ca.unsubscribe(self._parse_dm16)
         self._ca.subscribe(self._parse_dm14)
-        self.state = QueryState.WAIT_FOR_OPER_COMPLETE
+        self.state = ResponseState.SEND_OPERATION_COMPLETE
         self._send_dm15()
 
     def bytes_to_int(self, data: bytearray) -> int:
@@ -197,9 +225,16 @@ class DM14Response:
     def set_seed_key_algorithm(self, algorithm: callable) -> None:
         """
         Set seed key algorithm to be used for key generation
-        param: callable algorithm: seed-key algorithm
+        :param callable algorithm: seed-key algorithm
         """
         self._key_from_seed = algorithm
+
+    def set_seed_generator(self, algorithm: callable) -> None:
+        """
+        Sets seed generation algorithm to be used for generating a seed value
+        :param callable algorithm: seed generation algorithm
+        """
+        self._seed_generator = algorithm
 
     def listen(self, receive_address: int, object_byte_size: int = 1) -> None:
         """
@@ -233,17 +268,13 @@ class DM14Response:
             self.access_level,  # Fix testing to make sure it works properly
         )
 
-        # more elegant solution to seed override make a function to override seed generator and pass it in
-
     def respond(
         self,
         proceed: bool,
         data: list = [],
         error: int = 0xFFFFFF,
         edcp: int = 0xFF,
-        seed_override: bool = False,
-        seed: int = 0x01,
-    ) -> int:
+    ) -> list:
         """
         Respond to DM14 query with the requested data or confimation of operation is good to proceed
         :param bool proceed: whether the operation is good to proceed
@@ -257,20 +288,18 @@ class DM14Response:
         self.data = data
         self.error = error
         self.edcp = edcp
-        self.seed_override = seed_override
-        self.seed = seed
-        self.status = Dm15Status.PROCEED.value
-        if self._key_from_seed is not None:
-            self.state = ResponseState.WAIT_FOR_KEY
-            self._ca.subscribe(self._parse_dm14)
-            self._send_dm15()
-            self.data_queue.get(block=True, timeout=3)
-            if self.access_level != self._key_from_seed(self.seed):
-                self.proceed = False
-                self.error = 0x1003
-        self.state = ResponseState.SEND_PROCEED
-        self._ca.unsubscribe(self._parse_dm14)
+        self.status = (
+            Dm15Status.PROCEED.value if proceed else Dm15Status.OPERATION_FAILED.value
+        )
+        if (
+            self.status == Dm15Status.PROCEED.value
+            and self.state == ResponseState.WAIT_FOR_KEY
+        ):
+            self.state = ResponseState.SEND_PROCEED
+        else:
+            self.state = ResponseState.SEND_ERROR
+        # self._ca.unsubscribe(self._parse_dm14)
         self._send_dm15()
         self._wait_for_data()
         self.data_queue.get(block=True, timeout=3)
-        return self.bytes_to_int(self.mem_data) if self.mem_data is not None else None
+        return self.mem_data if self.mem_data is not None else None

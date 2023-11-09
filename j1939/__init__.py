@@ -7,3 +7,5 @@ from .parameter_group_number import ParameterGroupNumber
 from .diagnostic_messages import *
 from .memory_access import *
 from .error_info import *
+from .Dm14Query import *
+from .Dm14Response import *

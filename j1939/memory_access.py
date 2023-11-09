@@ -4,14 +4,12 @@ import sys
 import time
 import secrets
 import j1939
-import Dm14Query
-import Dm14Response
 
 
 class QueryState(Enum):
     IDLE = 1
     REQUEST_STARTED = 2
-    WAIT_CALLBACKS = 3
+    WAIT_RESPONSE = 3
 
 
 class Command(Enum):
@@ -53,11 +51,12 @@ class MemoryAccess:
         :param receive_addr: Address of the device expected to receive memory accesses from
         """
         self._ca = ca
-        self.query = Dm14Query.DM14Query(ca)
-        self.response = Dm14Response.DM14Response(ca)
+        self.query = j1939.Dm14Query(ca)
+        self.response = j1939.DM14Response(ca)
         self._ca.subscribe(self._listen_for_dm14)
         self.state = QueryState.IDLE
-        self._spatial_function = None
+        self.seed_securirty = False
+        self._notify_query_received = None
         self._seed_key_valid = None
         self._proceed_function = None
 
@@ -72,60 +71,51 @@ class MemoryAccess:
         :param timestamp: Timestamp of the message
         :param data: Data of the PDU
         """
-        if self.state is QueryState.IDLE:
-            self.state = QueryState.REQUEST_STARTED
-            self.response._parse_dm14(priority, pgn, sa, timestamp, data)
-        elif self.state is QueryState.REQUEST_STARTED:
-            self.state = QueryState.WAIT_CALLBACKS
-            self.query._parse_dm14(priority, pgn, sa, timestamp, data)
-            self._ca.unsubscribe(self._listen_for_dm14)
-            self._callbacks()
+        match self.state:
+            case QueryState.IDLE:
+                self.state = QueryState.REQUEST_STARTED
+                self.response._parse_dm14(priority, pgn, sa, timestamp, data)
+                if not self.seed_securirty:
+                    self._ca.unsubscribe(self._listen_for_dm14)
+                    if self._notify_query_received is not None:
+                        self._notify_query_received()  # notify incoming request
 
-    def _callbacks(self) -> None:
-        """
-        Handles calling callbacks for the memory access class
-        """
-        if self._spatial_function is not None:
-            self._spatial_function(
-                self.response.access_level,
-                self.response.sa,
-                self.response.address,
-                self.response.length,
-                self.response.direct,
-                self.response.command,
-                self.response.object_count,
-                self.response.data_queue,
-            )
-        if self._seed_key_valid is not None:
-            self.valid = self._seed_key_valid(self.response.seed, self.response.key)
-        if self._proceed_function is not None:
-            self.proceed = self._proceed_function()
+            case QueryState.REQUEST_STARTED:
+                self.state = QueryState.WAIT_RESPONSE
+                self.query._parse_dm14(priority, pgn, sa, timestamp, data)
+                self._ca.unsubscribe(self._listen_for_dm14)
+                if self._notify_query_received is not None:
+                    self._notify_query_received()  # notify incoming request
 
-    def set_spatial_function(self, function: callable) -> None:
+    def respond(
+        self, proceed: bool, data: list = [], error: int = 0xFFFFFF, edcp: int = 0xFF
+    ) -> list:
         """
-        set spatial function to be used for handling queries
-        :param callable function: spatial function
+        Responds with requested data and error code, if applicable, to a read request
         """
-        self._spatial_function = function
+        print("respond called")
+        self.state = QueryState.IDLE
+        return self.response.respond(proceed, data, error, edcp)
 
-    def set_is_seed_key_valid_function(self, function: callable) -> None:
+    def set_seed_generator(self, seed_generator: callable) -> None:
         """
-        set is-seed-key-valid function to be used for key verification
-        :param callable function: is-seed-key-valid function
+        Sets seed generator function to use
+        :param seed_generator: seed generator function
         """
-        self._seed_key_valid = function
-
-    def set_proceed_function(self, function: callable) -> None:
-        """
-        set proceed function to be used for handling proceed messages
-        :param callable function: proceed function
-        """
-        self._proceed_function = function
+        self.response.set_seed_generator(seed_generator)
 
     def set_seed_key_algorithm(self, algorithm: callable) -> None:
         """
         set seed-key algorithm to be used for key generation
         :param callable algorithm: seed-key algorithm
         """
+        self.seed_securirty = True
         self.query.set_seed_key_algorithm(algorithm)
         self.response.set_seed_key_algorithm(algorithm)
+
+    def set_notify(self, notify: callable) -> None:
+        """
+        set notify function to be used for notifying the user of memory accesses
+        :param callable notify: notify function
+        """
+        self._notify_query_received = notify
