@@ -82,7 +82,7 @@ class MemoryAccess:
 
             case QueryState.REQUEST_STARTED:
                 self.state = QueryState.WAIT_RESPONSE
-                self.query._parse_dm14(priority, pgn, sa, timestamp, data)
+                self.response._parse_dm14(priority, pgn, sa, timestamp, data)
                 self._ca.unsubscribe(self._listen_for_dm14)
                 if self._notify_query_received is not None:
                     self._notify_query_received()  # notify incoming request
@@ -93,7 +93,7 @@ class MemoryAccess:
         """
         Responds with requested data and error code, if applicable, to a read request
         """
-        print("respond called")
+        self._ca.unsubscribe(self._listen_for_dm14)
         self.state = QueryState.IDLE
         return self.response.respond(proceed, data, error, edcp)
 

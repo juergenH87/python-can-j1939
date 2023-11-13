@@ -70,14 +70,17 @@ class DM14Response:
         If the command is a read command, then the data requested is sent.
         """
         if self.command is Command.READ.value:
+            self._send_dm15()
             self._send_dm16()
             self.proceed = True
             self.state = ResponseState.SEND_OPERATION_COMPLETE
             self._ca.subscribe(self._parse_dm14)
             self._send_dm15()
         else:
-            self.state = ResponseState.WAIT_FOR_DM16
             self._ca.subscribe(self._parse_dm16)
+            self._send_dm15()
+            self.state = ResponseState.WAIT_FOR_DM16
+
 
     def _parse_dm14(
         self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
@@ -94,24 +97,21 @@ class DM14Response:
             return
         if self.sa is not None and sa != self.sa:
             return
-
         self.length = len(data)
         self.direct = data[1] >> 4
         match self.state:
             case ResponseState.IDLE:
                 self.pgn = pgn
                 self.sa = sa
-
+                self.status = Dm15Status.PROCEED.value
                 self.address = data[2 : (self.length - 2)]
                 self.direct = data[1] >> 4
                 self.command = ((data[1] - 1) & 0x0F) >> 1
                 self.object_count = data[0]
                 self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
-                self.data_queue.put(data)
+                self.data = data
                 if self._key_from_seed is not None:
-                    print("howdy")
                     self.state = ResponseState.WAIT_FOR_KEY
-                    print(self.state)
                     self._send_dm15()
                 else:
                     self.state = ResponseState.SEND_PROCEED
@@ -122,7 +122,7 @@ class DM14Response:
                 self.command = ((data[1] - 1) & 0x0F) >> 1
                 self.object_count = data[0]
                 self.key = (data[self.length - 1] << 8) + data[self.length - 2]
-                self.data_queue.put(data)
+                self.data = data
 
             case ResponseState.WAIT_OPERATION_COMPLETE:
                 self.state = ResponseState.IDLE
@@ -139,24 +139,19 @@ class DM14Response:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM15
         data = [0xFF] * self.length
         data[1] = (self.direct << 4) + (self.status << 1) + 1
-        print(self.state)
-
         match self.state:
             case ResponseState.WAIT_FOR_KEY:
                 self.seed = self._seed_generator()
                 print(self.seed)
                 data[0] = 0x00
-                data[self.length - 3] = self.edcp
                 data[self.length - 2] = self.seed & 0xFF
                 data[self.length - 1] = self.seed >> 8
             case ResponseState.SEND_PROCEED:
-                data[self.length - 3] = self.edcp
                 data[0] = self.object_count
             case ResponseState.SEND_OPERATION_COMPLETE:
                 self.command = Command.OPERATION_COMPLETED.value
                 data[0] = 0x00
                 data[1] = (self.direct << 4) + (self.command << 1) + 1
-                data[self.length - 3] = self.edcp
                 self.state = ResponseState.WAIT_OPERATION_COMPLETE
             case ResponseState.SEND_ERROR:
                 self.status = Dm15Status.OPERATION_FAILED.value
@@ -168,7 +163,6 @@ class DM14Response:
                 data[self.length - 3] = self.edcp
             case _:
                 raise ValueError("Invalid state")
-        print(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 6, data)
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 6, data)
 
     def _send_dm16(self) -> None:
@@ -182,7 +176,6 @@ class DM14Response:
         for i in range(byte_count):
             data.append(self.data[i])
         data.extend([0xFF] * (self.length - byte_count - 1))
-        print(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 7, data)
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 7, data)
 
     def _parse_dm16(
@@ -196,11 +189,13 @@ class DM14Response:
         :param int timestamp: timestamp of the message
         :param bytearray data: data of the PDU
         """
+
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self.sa:
             return
         length = min(data[0], len(data) - 1)
         # assert object_count == self.object_count
         self.mem_data = data[1 : length + 1]
+        self.data_queue.put(data)
         self._ca.unsubscribe(self._parse_dm16)
         self._ca.subscribe(self._parse_dm14)
         self.state = ResponseState.SEND_OPERATION_COMPLETE
@@ -236,37 +231,37 @@ class DM14Response:
         """
         self._seed_generator = algorithm
 
-    def listen(self, receive_address: int, object_byte_size: int = 1) -> None:
-        """
-        Listen for DM14 query to start a memory access operation
-        :param int receive_address: address to listen for DM14 query from
-        :param int object_byte_size: size of each object in bytes
-        """
-        self._dest_address = receive_address
-        self.object_byte_size = object_byte_size
-        self._ca.subscribe(self._parse_dm14)
-        self.state = ResponseState.WAIT_FOR_DM14
-
-        # wait for DM14 query to arrive
-        self.data_queue.get(block=True, timeout=None)
-        address = self.address
-        command = self.command
-        direct = self.direct
-        object_count = self.object_count
-        access_level = self.access_level
-        if self._key_from_seed is not None:
-            self.proceed = True
-            self.state = ResponseState.WAIT_FOR_KEY
-            self._send_dm15()
-            self.data_queue.get(block=True, timeout=3)
-        return (
-            address,
-            command,
-            direct,
-            object_count,
-            access_level,
-            self.access_level,  # Fix testing to make sure it works properly
-        )
+    # def listen(self, receive_address: int, object_byte_size: int = 1) -> None:
+    #     """
+    #     Listen for DM14 query to start a memory access operation
+    #     :param int receive_address: address to listen for DM14 query from
+    #     :param int object_byte_size: size of each object in bytes
+    #     """
+    #     self._dest_address = receive_address
+    #     self.object_byte_size = object_byte_size
+    #     self._ca.subscribe(self._parse_dm14)
+    #     self.state = ResponseState.WAIT_FOR_DM14
+    #
+    #     # wait for DM14 query to arrive
+    #     self.data_queue.get(block=True, timeout=None)
+    #     address = self.address
+    #     command = self.command
+    #     direct = self.direct
+    #     object_count = self.object_count
+    #     access_level = self.access_level
+    #     if self._key_from_seed is not None:
+    #         self.proceed = True
+    #         self.state = ResponseState.WAIT_FOR_KEY
+    #         self._send_dm15()
+    #         self.data_queue.get(block=True, timeout=3)
+    #     return (
+    #         address,
+    #         command,
+    #         direct,
+    #         object_count,
+    #         access_level,
+    #         self.access_level,  # Fix testing to make sure it works properly
+    #     )
 
     def respond(
         self,
@@ -291,15 +286,14 @@ class DM14Response:
         self.status = (
             Dm15Status.PROCEED.value if proceed else Dm15Status.OPERATION_FAILED.value
         )
-        if (
-            self.status == Dm15Status.PROCEED.value
-            and self.state == ResponseState.WAIT_FOR_KEY
-        ):
+        if self.status == Dm15Status.PROCEED.value:
             self.state = ResponseState.SEND_PROCEED
         else:
             self.state = ResponseState.SEND_ERROR
         # self._ca.unsubscribe(self._parse_dm14)
-        self._send_dm15()
         self._wait_for_data()
-        self.data_queue.get(block=True, timeout=3)
+        mem_data = None
+        if self.state == ResponseState.WAIT_FOR_DM16:
+            mem_data = self.data_queue.get(block=True, timeout=3)
+
         return self.mem_data if self.mem_data is not None else None

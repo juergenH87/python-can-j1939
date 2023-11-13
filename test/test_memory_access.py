@@ -97,9 +97,18 @@ def generate_seed():
     return 0xA55A
 
 
-def notify_response(dm14: j1939.DM14Response) -> None:
+def global_flag() -> None:
     global flag
     flag = True
+
+
+def reset_flag() -> None:
+    global flag
+    flag = False
+
+
+def teardown():
+    reset_flag()
 
 
 # @pytest.mark.parametrize(
@@ -153,7 +162,7 @@ def notify_response(dm14: j1939.DM14Response) -> None:
 
 #     feeder.process_messages()
 
-
+#
 # @pytest.mark.parametrize(
 #     argnames=["expected_messages"],
 #     argvalues=[[request_read_with_seed], [request_read_no_seed]],
@@ -161,8 +170,8 @@ def notify_response(dm14: j1939.DM14Response) -> None:
 # )
 @pytest.mark.parametrize(
     argnames=["expected_messages"],
-    argvalues=[[request_read_with_seed]],
-    ids=["With seed key"],
+    argvalues=[[request_read_with_seed], [request_read_no_seed]],
+    ids=["With seed key", "Without seed key"],
 )
 def test_dm14_request_read(feeder, expected_messages):
     """
@@ -182,55 +191,65 @@ def test_dm14_request_read(feeder, expected_messages):
         6,
         [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00],
     )
+    global flag
 
     dm14 = j1939.MemoryAccess(ca)
     dm14.set_seed_generator(generate_seed)
-    dm14.set_notify(notify_response)
+
+    dm14.set_notify(global_flag)
+
     if expected_messages == request_read_with_seed:
         dm14.set_seed_key_algorithm(key_from_seed)
-        while not flag:
-            pass
-        dm14.respond(True, [0x01], 0xFFFF, 0xFF)
-    # else:
-    #     time.sleep(0.1)
-    #     dm14.respond(True, [0x01], 0xFFFF, 0xFF)
+
+    while flag == False:
+        pass
+    reset_flag()
+    dm14.respond(True, [0x01], 0xFFFF, 0xFF)
 
     feeder.process_messages()
 
 
-# @pytest.mark.parametrize(
-#     argnames=["expected_messages"],
-#     argvalues=[[request_write_with_seed], [request_write_no_seed]],
-#     ids=["With seed key", "Without seed key"],
-# )
-# def test_dm14_request_write(feeder, expected_messages):
-#     """
-#     Tests the DM14 response to write query function
-#     :param feeder: can message feeder
-#     :param expected_messages: list of expected messages
-#     """
-#     feeder.can_messages = expected_messages
-#     feeder.pdus_from_messages()
-#     ca = feeder.accept_all_messages(
-#         device_address_preferred=0xD4, bypass_address_claim=True
-#     )
-#     ca.send_pgn(
-#         0,
-#         (j1939.ParameterGroupNumber.PGN.DM14 >> 8) & 0xFF,
-#         0xF9 & 0xFF,
-#         6,
-#         [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00],
-#     )
-#     dm14 = j1939.DM14Response(ca)
-#     dm14.listen(0xF9, 1)
-#     values = 0x11223344
-#     if expected_messages == request_write_with_seed:
-#         dm14.set_seed_key_algorithm(key_from_seed)
-#         assert values == dm14.respond(True, [], 0xFFFF, 0xFF, True, 0xA55A)
-#     else:
-#         assert values == dm14.respond(True, [], 0xFFFF, 0xFF)
+@pytest.mark.parametrize(
+    argnames=["expected_messages"],
+    argvalues=[[request_write_with_seed], [request_write_no_seed]],
+    ids=["With seed key", "Without seed key"],
+)
+def test_dm14_request_write(feeder, expected_messages):
+    """
+    Tests the DM14 response to write query function
+    :param feeder: can message feeder
+    :param expected_messages: list of expected messages
+    """
+    feeder.can_messages = expected_messages
+    feeder.pdus_from_messages()
+    ca = feeder.accept_all_messages(
+        device_address_preferred=0xD4, bypass_address_claim=True
+    )
+    ca.send_pgn(
+        0,
+        (j1939.ParameterGroupNumber.PGN.DM14 >> 8) & 0xFF,
+        0xF9 & 0xFF,
+        6,
+        [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00],
+    )
 
-#     feeder.process_messages()
+    global flag
+
+    dm14 = j1939.MemoryAccess(ca)
+    dm14.set_seed_generator(generate_seed)
+
+    dm14.set_notify(global_flag)
+
+    if expected_messages == request_write_with_seed:
+        dm14.set_seed_key_algorithm(key_from_seed)
+    values = 0x11223344
+    while flag == False:
+        pass
+    reset_flag()
+    test = dm14.respond(True, [], 0xFFFF, 0xFF)
+    assert values == int.from_bytes(test, byteorder="little", signed=False)
+
+    feeder.process_messages()
 
 
 # @pytest.mark.parametrize(
