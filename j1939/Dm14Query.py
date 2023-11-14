@@ -1,8 +1,5 @@
 from enum import Enum
 import queue
-import sys
-import time
-import secrets
 import j1939
 
 
@@ -16,25 +13,13 @@ class QueryState(Enum):
 class Command(Enum):
     ERASE = 0
     READ = 1
+    READ = 1
     WRITE = 2
     STATUS_REQUEST = 3
     OPERATION_COMPLETED = 4
     OPERATION_FAILED = 5
     BOOT_LOAD = 6
     EDCP_GENERATION = 7
-
-
-class ResponseState(Enum):
-    IDLE = 1
-    WAIT_FOR_DM14 = 2
-    WAIT_FOR_KEY = 3
-    SEND_PROCEED = 4
-
-
-class ReceiveState(Enum):
-    IDLE = 1
-    WAIT_FOR_KEY = 2
-    WAIT_FOR_CONFIRMATION = 3
 
 
 class Dm15Status(Enum):
@@ -66,10 +51,12 @@ class Dm14Query:
         """
         assert self.state is QueryState.WAIT_FOR_SEED
         if self.command is Command.WRITE:
+            print("send?")
             self._send_dm16()
             self.state = QueryState.WAIT_FOR_OPER_COMPLETE
         else:
             self.state = QueryState.WAIT_FOR_DM16
+            print("wait for dm16")
             self._ca.unsubscribe(self._parse_dm15)
             self._ca.subscribe(self._parse_dm16)
 
@@ -88,6 +75,7 @@ class Dm14Query:
 
         :param int key_or_user_level: key or user level
         """
+        print("dm14")
         self._pgn = j1939.ParameterGroupNumber.PGN.DM14
         pointer = self.address.to_bytes(length=4, byteorder="little")
         data = []
@@ -131,7 +119,8 @@ class Dm14Query:
         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
             return
         seed = (data[7] << 8) + data[6]
-
+        print("dm15")
+        print(data)
         status = (data[1] >> 1) & 7
         if (
             status is Dm15Status.BUSY.value
@@ -140,12 +129,11 @@ class Dm14Query:
             error = int.from_bytes(data[2:5], byteorder="little", signed=False)
             edcp = data[5]
             self.data_queue.put(None)
-            if edcp == 0x06 or edcp == 0x07:
-                self.exception_queue.put(
-                    RuntimeError(
-                        f"Device {hex(sa)} error: {j1939.error_info.ErrorInfo[error] if error in j1939.error_info.ErrorInfo else 'Error not defined'}"
-                    )
+            self.exception_queue.put(
+                RuntimeError(
+                    f"Device {hex(sa)} error: {hex(error)} edcp: {hex(edcp)}"
                 )
+            )
         else:
             length = data[0]
             if seed == 0xFFFF and length == self.object_count:
@@ -181,6 +169,7 @@ class Dm14Query:
         """
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self._dest_address:
             return
+        print("dmm16")
         length = min(data[0], len(data) - 1)
         # assert object_count == self.object_count
         self.mem_data = data[1 : length + 1]

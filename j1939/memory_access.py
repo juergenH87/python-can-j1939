@@ -1,46 +1,12 @@
 from enum import Enum
-import queue
-import sys
-import time
-import secrets
 import j1939
 
 
-class QueryState(Enum):
+class DMState(Enum):
     IDLE = 1
     REQUEST_STARTED = 2
     WAIT_RESPONSE = 3
-
-
-class Command(Enum):
-    ERASE = 0
-    READ = 1
-    WRITE = 2
-    STATUS_REQUEST = 3
-    OPERATION_COMPLETED = 4
-    OPERATION_FAILED = 5
-    BOOT_LOAD = 6
-    EDCP_GENERATION = 7
-
-
-class ResponseState(Enum):
-    IDLE = 1
-    WAIT_FOR_DM14 = 2
-    WAIT_FOR_KEY = 3
-    SEND_PROCEED = 4
-
-
-class ReceiveState(Enum):
-    IDLE = 1
-    WAIT_FOR_KEY = 2
-    WAIT_FOR_CONFIRMATION = 3
-
-
-class Dm15Status(Enum):
-    PROCEED = 0
-    BUSY = 1
-    OPERATION_COMPLETE = 4
-    OPERATION_FAILED = 5
+    WAIT_QUERY = 4
 
 
 class MemoryAccess:
@@ -54,8 +20,8 @@ class MemoryAccess:
         self.query = j1939.Dm14Query(ca)
         self.response = j1939.DM14Response(ca)
         self._ca.subscribe(self._listen_for_dm14)
-        self.state = QueryState.IDLE
-        self.seed_securirty = False
+        self.state = DMState.IDLE
+        self.seed_security = False
         self._notify_query_received = None
         self._seed_key_valid = None
         self._proceed_function = None
@@ -72,20 +38,22 @@ class MemoryAccess:
         :param data: Data of the PDU
         """
         match self.state:
-            case QueryState.IDLE:
-                self.state = QueryState.REQUEST_STARTED
+            case DMState.IDLE:
+                self.state = DMState.REQUEST_STARTED
                 self.response._parse_dm14(priority, pgn, sa, timestamp, data)
-                if not self.seed_securirty:
+                if not self.seed_security:
                     self._ca.unsubscribe(self._listen_for_dm14)
                     if self._notify_query_received is not None:
                         self._notify_query_received()  # notify incoming request
 
-            case QueryState.REQUEST_STARTED:
-                self.state = QueryState.WAIT_RESPONSE
+            case DMState.REQUEST_STARTED:
+                self.state = DMState.WAIT_RESPONSE
                 self.response._parse_dm14(priority, pgn, sa, timestamp, data)
                 self._ca.unsubscribe(self._listen_for_dm14)
                 if self._notify_query_received is not None:
                     self._notify_query_received()  # notify incoming request
+            case _:
+                pass
 
     def respond(
         self, proceed: bool, data: list = [], error: int = 0xFFFFFF, edcp: int = 0xFF
@@ -94,8 +62,56 @@ class MemoryAccess:
         Responds with requested data and error code, if applicable, to a read request
         """
         self._ca.unsubscribe(self._listen_for_dm14)
-        self.state = QueryState.IDLE
+        self.state = DMState.IDLE
         return self.response.respond(proceed, data, error, edcp)
+
+    def read(
+        self,
+        dest_address: int,
+        direct: int,
+        address: int,
+        object_count: int,
+        object_byte_size: int = 1,
+        signed: bool = False,
+        return_raw_bytes: bool = False,
+    ) -> list:
+        """
+        Make a dm14 read Query
+        :param int dest_address: destination address of the message
+        :param int direct: direct address of the message
+        :param int address: address of the message
+        :param int object_count: number of objects to be read
+        :param int object_byte_size: size of each object in bytes
+        :param bool signed: whether the data is signed
+        :param bool return_raw_bytes: whether to return raw bytes or values
+        """
+        data = []
+        if self.state == DMState.IDLE:
+            self.state = DMState.WAIT_QUERY
+            data = self.query.read(dest_address, direct, address, object_count, object_byte_size, signed, return_raw_bytes)
+            self.state = DMState.IDLE
+        return data
+
+    def write(
+            self,
+            dest_address: int,
+            direct: int,
+            address: int,
+            values: list,
+            object_byte_size: int = 1,
+    ) -> None:
+        """
+        Send a write query to dest_address, requesting to write values at address
+        :param int dest_address: destination address of the message
+        :param int direct: direct address of the message
+        :param int address: address of the message
+        :param list values: values to be written
+        :param int object_byte_size: size of each object in bytes
+        """
+        if self.state == DMState.IDLE:
+            self.state = DMState.WAIT_QUERY
+            self.query.write(dest_address, direct, address, values, object_byte_size)
+            self.state = DMState.IDLE
 
     def set_seed_generator(self, seed_generator: callable) -> None:
         """
@@ -109,7 +125,7 @@ class MemoryAccess:
         set seed-key algorithm to be used for key generation
         :param callable algorithm: seed-key algorithm
         """
-        self.seed_securirty = True
+        self.seed_security = True
         self.query.set_seed_key_algorithm(algorithm)
         self.response.set_seed_key_algorithm(algorithm)
 

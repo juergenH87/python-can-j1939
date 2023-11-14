@@ -1,27 +1,7 @@
 from enum import Enum
 import queue
-import sys
-import time
 import secrets
 import j1939
-
-
-class QueryState(Enum):
-    IDLE = 1
-    WAIT_FOR_SEED = 2
-    WAIT_FOR_DM16 = 3
-    WAIT_FOR_OPER_COMPLETE = 4
-
-
-class Command(Enum):
-    ERASE = 0
-    READ = 1
-    WRITE = 2
-    STATUS_REQUEST = 3
-    OPERATION_COMPLETED = 4
-    OPERATION_FAILED = 5
-    BOOT_LOAD = 6
-    EDCP_GENERATION = 7
 
 
 class ResponseState(Enum):
@@ -33,19 +13,6 @@ class ResponseState(Enum):
     WAIT_OPERATION_COMPLETE = 6
     SEND_ERROR = 7
     WAIT_FOR_DM16 = 8
-
-
-class ReceiveState(Enum):
-    IDLE = 1
-    WAIT_FOR_KEY = 2
-    WAIT_FOR_CONFIRMATION = 3
-
-
-class Dm15Status(Enum):
-    PROCEED = 0
-    BUSY = 1
-    OPERATION_COMPLETE = 4
-    OPERATION_FAILED = 5
 
 
 class DM14Response:
@@ -69,7 +36,7 @@ class DM14Response:
         Determines whether to send data or wait to receive data based on the command type.
         If the command is a read command, then the data requested is sent.
         """
-        if self.command is Command.READ.value:
+        if self.command is j1939.Command.READ.value:
             self._send_dm15()
             self._send_dm16()
             self.proceed = True
@@ -103,7 +70,7 @@ class DM14Response:
             case ResponseState.IDLE:
                 self.pgn = pgn
                 self.sa = sa
-                self.status = Dm15Status.PROCEED.value
+                self.status = j1939.Dm15Status.PROCEED.value
                 self.address = data[2 : (self.length - 2)]
                 self.direct = data[1] >> 4
                 self.command = ((data[1] - 1) & 0x0F) >> 1
@@ -149,12 +116,12 @@ class DM14Response:
             case ResponseState.SEND_PROCEED:
                 data[0] = self.object_count
             case ResponseState.SEND_OPERATION_COMPLETE:
-                self.command = Command.OPERATION_COMPLETED.value
+                self.command = j1939.Command.OPERATION_COMPLETED.value
                 data[0] = 0x00
                 data[1] = (self.direct << 4) + (self.command << 1) + 1
                 self.state = ResponseState.WAIT_OPERATION_COMPLETE
             case ResponseState.SEND_ERROR:
-                self.status = Dm15Status.OPERATION_FAILED.value
+                self.status = j1939.Dm15Status.OPERATION_FAILED.value
                 data[0] = 0x00
                 data[1] = (self.direct << 4) + (self.status << 1) + 1
                 data[self.length - 6] = self.error & 0xFF
@@ -231,38 +198,6 @@ class DM14Response:
         """
         self._seed_generator = algorithm
 
-    # def listen(self, receive_address: int, object_byte_size: int = 1) -> None:
-    #     """
-    #     Listen for DM14 query to start a memory access operation
-    #     :param int receive_address: address to listen for DM14 query from
-    #     :param int object_byte_size: size of each object in bytes
-    #     """
-    #     self._dest_address = receive_address
-    #     self.object_byte_size = object_byte_size
-    #     self._ca.subscribe(self._parse_dm14)
-    #     self.state = ResponseState.WAIT_FOR_DM14
-    #
-    #     # wait for DM14 query to arrive
-    #     self.data_queue.get(block=True, timeout=None)
-    #     address = self.address
-    #     command = self.command
-    #     direct = self.direct
-    #     object_count = self.object_count
-    #     access_level = self.access_level
-    #     if self._key_from_seed is not None:
-    #         self.proceed = True
-    #         self.state = ResponseState.WAIT_FOR_KEY
-    #         self._send_dm15()
-    #         self.data_queue.get(block=True, timeout=3)
-    #     return (
-    #         address,
-    #         command,
-    #         direct,
-    #         object_count,
-    #         access_level,
-    #         self.access_level,  # Fix testing to make sure it works properly
-    #     )
-
     def respond(
         self,
         proceed: bool,
@@ -284,9 +219,9 @@ class DM14Response:
         self.error = error
         self.edcp = edcp
         self.status = (
-            Dm15Status.PROCEED.value if proceed else Dm15Status.OPERATION_FAILED.value
+            j1939.Dm15Status.PROCEED.value if proceed else j1939.Dm15Status.OPERATION_FAILED.value
         )
-        if self.status == Dm15Status.PROCEED.value:
+        if self.status == j1939.Dm15Status.PROCEED.value:
             self.state = ResponseState.SEND_PROCEED
         else:
             self.state = ResponseState.SEND_ERROR
