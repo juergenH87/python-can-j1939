@@ -17,7 +17,7 @@ class MemoryAccess:
         """
         self._ca = ca
         self.query = j1939.Dm14Query(ca)
-        self.response = j1939.DM14Response(ca)
+        self.server = j1939.DM14Server(ca)
         self._ca.subscribe(self._listen_for_dm14)
         self.state = DMState.IDLE
         self.seed_security = False
@@ -39,22 +39,22 @@ class MemoryAccess:
         match self.state:
             case DMState.IDLE:
                 self.state = DMState.REQUEST_STARTED
-                self.response.parse_dm14(priority, pgn, sa, timestamp, data)
+                self.server.parse_dm14(priority, pgn, sa, timestamp, data)
                 if not self.seed_security:
                     self._ca.unsubscribe(self._listen_for_dm14)
                     if self._notify_query_received is not None:
                         self._notify_query_received()  # notify incoming request
 
             case DMState.REQUEST_STARTED:
-                self.response.parse_dm14(priority, pgn, sa, timestamp, data)
-                if self.response.state == j1939.ResponseState.SEND_PROCEED:
+                self.server.parse_dm14(priority, pgn, sa, timestamp, data)
+                if self.server.state == j1939.ResponseState.SEND_PROCEED:
                     self.state = DMState.WAIT_RESPONSE
                     if self._notify_query_received is not None:
                         self._notify_query_received()  # notify incoming request
             case DMState.WAIT_QUERY:
-                self.response.set_busy(True)
-                self.response.parse_dm14(priority, pgn, sa, timestamp, data)
-                self.response.set_busy(False)
+                self.server.set_busy(True)
+                self.server.parse_dm14(priority, pgn, sa, timestamp, data)
+                self.server.set_busy(False)
             case _:
                 pass
 
@@ -72,7 +72,7 @@ class MemoryAccess:
             data = []
         self._ca.unsubscribe(self._listen_for_dm14)
         self.state = DMState.IDLE
-        return self.response.respond(proceed, data, error, edcp)
+        return self.server.respond(proceed, data, error, edcp)
 
     def read(
         self,
@@ -138,7 +138,7 @@ class MemoryAccess:
         Sets seed generator function to use
         :param seed_generator: seed generator function
         """
-        self.response.set_seed_generator(seed_generator)
+        self.server.set_seed_generator(seed_generator)
 
     def set_seed_key_algorithm(self, algorithm: callable) -> None:
         """
@@ -147,7 +147,7 @@ class MemoryAccess:
         """
         self.seed_security = True
         self.query.set_seed_key_algorithm(algorithm)
-        self.response.set_seed_key_algorithm(algorithm)
+        self.server.set_seed_key_algorithm(algorithm)
 
     def set_notify(self, notify: callable) -> None:
         """

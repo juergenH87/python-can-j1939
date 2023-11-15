@@ -15,7 +15,7 @@ class ResponseState(Enum):
     WAIT_FOR_DM16 = 8
 
 
-class DM14Response:
+class DM14Server:
     def __init__(self, ca: j1939.ControllerApplication) -> None:
         """
         performs memory access responses using DM14-DM18 messaging.
