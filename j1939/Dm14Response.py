@@ -19,17 +19,25 @@ class DM14Response:
     def __init__(self, ca: j1939.ControllerApplication) -> None:
         """
         performs memory access responses using DM14-DM18 messaging.
-
         :param obj ca: j1939 controller application
         """
 
         self._ca = ca
+        self._busy = False
         self.sa = None
         self.state = ResponseState.IDLE
         self._key_from_seed = None
         self.data_queue = queue.Queue()
         self.mem_data = None
         self._seed_generator = self.generate_seed
+        self.address = None
+        self.length = 8
+        self.proceed = False
+        self.data = []
+        self.error = 0x00
+        self.edcp = 0x07
+        self.status = j1939.Dm15Status.PROCEED.value
+        self.direct = 0
 
     def _wait_for_data(self) -> None:
         """
@@ -61,10 +69,35 @@ class DM14Response:
         """
         if pgn != j1939.ParameterGroupNumber.PGN.DM14:
             return
-        if self.sa is not None and sa != self.sa:
+        if (
+            (self.sa is not None and sa != self.sa)
+            or (
+                self.address is not None and self.address != data[2 : (self.length - 2)]
+            )
+            or self._busy
+        ):
+            sa_temp = self.sa
+            data_temp = self.data
+            status_tmp = self.status
+            state_tmp = self.state
+            direct_tmp = self.direct
+            self.state = j1939.ResponseState.SEND_ERROR
+            self.sa = sa
+            self.error = 0x2
+            self.edcp = 0x7
+            self.direct = data[1] >> 4
+            self._send_dm15()
+            self.sa = sa_temp
+            self.direct = direct_tmp
+            self.data = data_temp
+            self.status = status_tmp
+            self.state = state_tmp
+            self.set_busy(False)
             return
+
         self.length = len(data)
         self.direct = data[1] >> 4
+
         match self.state:
             case ResponseState.IDLE:
                 self.pgn = pgn
@@ -89,6 +122,7 @@ class DM14Response:
                 self.object_count = data[0]
                 self.key = (data[self.length - 1] << 8) + data[self.length - 2]
                 self.data = data
+                self.state = ResponseState.SEND_PROCEED
 
             case ResponseState.WAIT_OPERATION_COMPLETE:
                 self.state = ResponseState.IDLE
@@ -96,7 +130,7 @@ class DM14Response:
                 self._ca.unsubscribe(self.parse_dm14)
 
             case _:
-                print("Invalid state")
+                raise ValueError("Invalid state")
 
     def _send_dm15(self) -> None:
         """
@@ -109,17 +143,19 @@ class DM14Response:
         match self.state:
             case ResponseState.WAIT_FOR_KEY:
                 self.seed = self._seed_generator()
-                print(self.seed)
                 data[0] = 0x00
                 data[self.length - 2] = self.seed & 0xFF
                 data[self.length - 1] = self.seed >> 8
+
             case ResponseState.SEND_PROCEED:
                 data[0] = self.object_count
+
             case ResponseState.SEND_OPERATION_COMPLETE:
                 self.command = j1939.Command.OPERATION_COMPLETED.value
                 data[0] = 0x00
                 data[1] = (self.direct << 4) + (self.command << 1) + 1
                 self.state = ResponseState.WAIT_OPERATION_COMPLETE
+
             case ResponseState.SEND_ERROR:
                 self.status = j1939.Dm15Status.OPERATION_FAILED.value
                 data[0] = 0x00
@@ -128,6 +164,7 @@ class DM14Response:
                 data[self.length - 5] = (self.error >> 8) & 0xFF
                 data[self.length - 4] = self.error >> 16
                 data[self.length - 3] = self.edcp
+
             case _:
                 raise ValueError("Invalid state")
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 6, data)
@@ -140,8 +177,10 @@ class DM14Response:
         data = []
         byte_count = len(self.data)
         data.append(0xFF if byte_count > 7 else byte_count)
+
         for i in range(byte_count):
             data.append(self.data[i])
+
         data.extend([0xFF] * (self.length - byte_count - 1))
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 7, data)
 
@@ -159,6 +198,7 @@ class DM14Response:
 
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self.sa:
             return
+
         length = min(data[0], len(data) - 1)
         # assert object_count == self.object_count
         self.mem_data = data[1 : length + 1]
@@ -174,6 +214,13 @@ class DM14Response:
         :param bytearray data: bytearray to be converted to integer
         """
         return int.from_bytes(data, byteorder="little", signed=False)
+
+    def set_busy(self, busy: bool) -> None:
+        """
+        Sets busy variable to indicate if busy or not
+        :param busy: busy value
+        """
+        self._busy = busy
 
     def generate_seed(self) -> int:
         """
@@ -219,7 +266,9 @@ class DM14Response:
         self.error = error
         self.edcp = edcp
         self.status = (
-            j1939.Dm15Status.PROCEED.value if proceed else j1939.Dm15Status.OPERATION_FAILED.value
+            j1939.Dm15Status.PROCEED.value
+            if proceed
+            else j1939.Dm15Status.OPERATION_FAILED.value
         )
         if self.status == j1939.Dm15Status.PROCEED.value:
             self.state = ResponseState.SEND_PROCEED

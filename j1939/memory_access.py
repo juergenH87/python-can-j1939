@@ -46,13 +46,16 @@ class MemoryAccess:
                         self._notify_query_received()  # notify incoming request
 
             case DMState.REQUEST_STARTED:
-                self.state = DMState.WAIT_RESPONSE
                 self.response.parse_dm14(priority, pgn, sa, timestamp, data)
-                self._ca.unsubscribe(self._listen_for_dm14)
-                if self._notify_query_received is not None:
-                    self._notify_query_received()  # notify incoming request
+                if self.response.state == j1939.ResponseState.SEND_PROCEED:
+                    self.state = DMState.WAIT_RESPONSE
+                    if self._notify_query_received is not None:
+                        self._notify_query_received()  # notify incoming request
+            case DMState.WAIT_QUERY:
+                self.response.set_busy(True)
+                self.response.parse_dm14(priority, pgn, sa, timestamp, data)
+                self.response.set_busy(False)
             case _:
-                # figure out how to send  dm15 request here
                 pass
 
     def respond(
@@ -93,19 +96,28 @@ class MemoryAccess:
         """
         if self.state == DMState.IDLE:
             self.state = DMState.WAIT_QUERY
-            data = self.query.read(dest_address, direct, address, object_count, object_byte_size, signed, return_raw_bytes)
+            self.address = dest_address
+            data = self.query.read(
+                dest_address,
+                direct,
+                address,
+                object_count,
+                object_byte_size,
+                signed,
+                return_raw_bytes,
+            )
             self.state = DMState.IDLE
             return data
         else:
             raise RuntimeWarning("Process already Running")
 
     def write(
-            self,
-            dest_address: int,
-            direct: int,
-            address: int,
-            values: list,
-            object_byte_size: int = 1,
+        self,
+        dest_address: int,
+        direct: int,
+        address: int,
+        values: list,
+        object_byte_size: int = 1,
     ) -> None:
         """
         Send a write query to dest_address, requesting to write values at address
@@ -117,6 +129,7 @@ class MemoryAccess:
         """
         if self.state == DMState.IDLE:
             self.state = DMState.WAIT_QUERY
+            self.address = dest_address
             self.query.write(dest_address, direct, address, values, object_byte_size)
             self.state = DMState.IDLE
 

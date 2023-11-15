@@ -50,12 +50,10 @@ class Dm14Query:
         """
         assert self.state is QueryState.WAIT_FOR_SEED
         if self.command is Command.WRITE:
-            print("send?")
             self._send_dm16()
             self.state = QueryState.WAIT_FOR_OPER_COMPLETE
         else:
             self.state = QueryState.WAIT_FOR_DM16
-            print("wait for dm16")
             self._ca.unsubscribe(self._parse_dm15)
             self._ca.subscribe(self._parse_dm16)
 
@@ -74,7 +72,6 @@ class Dm14Query:
 
         :param int key_or_user_level: key or user level
         """
-        print("dm14")
         self._pgn = j1939.ParameterGroupNumber.PGN.DM14
         pointer = self.address.to_bytes(length=4, byteorder="little")
         data = []
@@ -174,7 +171,6 @@ class Dm14Query:
         """
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self._dest_address:
             return
-        print("dmm16")
         length = min(data[0], len(data) - 1)
         # assert object_count == self.object_count
         self.mem_data = data[1 : length + 1]
