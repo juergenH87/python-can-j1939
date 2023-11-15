@@ -14,7 +14,6 @@ class MemoryAccess:
         """
         Makes an overarching Memory access class
         :param ca: Controller Application
-        :param receive_addr: Address of the device expected to receive memory accesses from
         """
         self._ca = ca
         self.query = j1939.Dm14Query(ca)
@@ -40,7 +39,7 @@ class MemoryAccess:
         match self.state:
             case DMState.IDLE:
                 self.state = DMState.REQUEST_STARTED
-                self.response._parse_dm14(priority, pgn, sa, timestamp, data)
+                self.response.parse_dm14(priority, pgn, sa, timestamp, data)
                 if not self.seed_security:
                     self._ca.unsubscribe(self._listen_for_dm14)
                     if self._notify_query_received is not None:
@@ -48,19 +47,26 @@ class MemoryAccess:
 
             case DMState.REQUEST_STARTED:
                 self.state = DMState.WAIT_RESPONSE
-                self.response._parse_dm14(priority, pgn, sa, timestamp, data)
+                self.response.parse_dm14(priority, pgn, sa, timestamp, data)
                 self._ca.unsubscribe(self._listen_for_dm14)
                 if self._notify_query_received is not None:
                     self._notify_query_received()  # notify incoming request
             case _:
+                # figure out how to send  dm15 request here
                 pass
 
     def respond(
-        self, proceed: bool, data: list = [], error: int = 0xFFFFFF, edcp: int = 0xFF
+        self, proceed: bool, data=None, error: int = 0xFFFFFF, edcp: int = 0xFF
     ) -> list:
         """
         Responds with requested data and error code, if applicable, to a read request
+        :param bool proceed: whether the operation is good to proceed
+        :param list data: data to be sent to device
+        :param int error: error code to be sent to device
+        :param int edcp: value for edcp extension
         """
+        if data is None:
+            data = []
         self._ca.unsubscribe(self._listen_for_dm14)
         self.state = DMState.IDLE
         return self.response.respond(proceed, data, error, edcp)
@@ -85,12 +91,13 @@ class MemoryAccess:
         :param bool signed: whether the data is signed
         :param bool return_raw_bytes: whether to return raw bytes or values
         """
-        data = []
         if self.state == DMState.IDLE:
             self.state = DMState.WAIT_QUERY
             data = self.query.read(dest_address, direct, address, object_count, object_byte_size, signed, return_raw_bytes)
             self.state = DMState.IDLE
-        return data
+            return data
+        else:
+            raise RuntimeWarning("Process already Running")
 
     def write(
             self,

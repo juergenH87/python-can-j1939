@@ -13,7 +13,6 @@ class QueryState(Enum):
 class Command(Enum):
     ERASE = 0
     READ = 1
-    READ = 1
     WRITE = 2
     STATUS_REQUEST = 3
     OPERATION_COMPLETED = 4
@@ -119,8 +118,6 @@ class Dm14Query:
         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
             return
         seed = (data[7] << 8) + data[6]
-        print("dm15")
-        print(data)
         status = (data[1] >> 1) & 7
         if (
             status is Dm15Status.BUSY.value
@@ -129,11 +126,19 @@ class Dm14Query:
             error = int.from_bytes(data[2:5], byteorder="little", signed=False)
             edcp = data[5]
             self.data_queue.put(None)
-            self.exception_queue.put(
-                RuntimeError(
-                    f"Device {hex(sa)} error: {hex(error)} edcp: {hex(edcp)}"
-                )
-            )
+            if edcp == 0x06 or edcp == 0x07:
+                if error in j1939.ErrorInfo:
+                    self.exception_queue.put(
+                        RuntimeError(
+                            f"Device {hex(sa)} error: {hex(error)} {j1939.ErrorInfo[error]} edcp: {hex(edcp)}"
+                        )
+                    )
+                else:
+                    self.exception_queue.put(
+                        RuntimeError(
+                            f"Device {hex(sa)} error: {hex(error)} edcp: {hex(edcp)}"
+                        )
+                    )
         else:
             length = data[0]
             if seed == 0xFFFF and length == self.object_count:

@@ -41,15 +41,14 @@ class DM14Response:
             self._send_dm16()
             self.proceed = True
             self.state = ResponseState.SEND_OPERATION_COMPLETE
-            self._ca.subscribe(self._parse_dm14)
+            self._ca.subscribe(self.parse_dm14)
             self._send_dm15()
         else:
             self._ca.subscribe(self._parse_dm16)
             self._send_dm15()
             self.state = ResponseState.WAIT_FOR_DM16
 
-
-    def _parse_dm14(
+    def parse_dm14(
         self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
     ) -> None:
         """
@@ -93,7 +92,8 @@ class DM14Response:
 
             case ResponseState.WAIT_OPERATION_COMPLETE:
                 self.state = ResponseState.IDLE
-                self._ca.unsubscribe(self._parse_dm14)
+                self.sa = None
+                self._ca.unsubscribe(self.parse_dm14)
 
             case _:
                 print("Invalid state")
@@ -164,7 +164,7 @@ class DM14Response:
         self.mem_data = data[1 : length + 1]
         self.data_queue.put(data)
         self._ca.unsubscribe(self._parse_dm16)
-        self._ca.subscribe(self._parse_dm14)
+        self._ca.subscribe(self.parse_dm14)
         self.state = ResponseState.SEND_OPERATION_COMPLETE
         self._send_dm15()
 
@@ -201,7 +201,7 @@ class DM14Response:
     def respond(
         self,
         proceed: bool,
-        data: list = [],
+        data=None,
         error: int = 0xFFFFFF,
         edcp: int = 0xFF,
     ) -> list:
@@ -211,9 +211,9 @@ class DM14Response:
         :param list data: data to be sent to device
         :param int error: error code to be sent to device
         :param int edcp: value for edcp extension
-        :param bool seed_override: whether to override the seed value
-        :param int seed: seed value to be sent to device
         """
+        if data is None:
+            data = []
         self.proceed = proceed
         self.data = data
         self.error = error
