@@ -30,7 +30,7 @@ setup(
         "numpy >= 1.17.0",
         "pytest >= 6.2.5",
     ],
-    python_requires=">=3.10.0",
+    python_requires=" >= 3.10",
     include_package_data=True,
 
     # Tests can be run using `python setup.py test`
