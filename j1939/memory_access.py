@@ -70,9 +70,12 @@ class MemoryAccess:
         """
         if data is None:
             data = []
-        self._ca.unsubscribe(self._listen_for_dm14)
-        self.state = DMState.IDLE
-        return self.server.respond(proceed, data, error, edcp)
+        if self.state is DMState.WAIT_RESPONSE:
+            self._ca.unsubscribe(self._listen_for_dm14)
+            self.state = DMState.IDLE
+            return self.server.respond(proceed, data, error, edcp)
+        else:
+            return data
 
     def read(
         self,
