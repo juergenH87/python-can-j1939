@@ -280,6 +280,8 @@ class Dm14Query:
             for _ in range(self.exception_queue.qsize()):
                 raise self.exception_queue.get(block=False, timeout=1)
         except queue.Empty:
+            if self.state is QueryState.WAIT_FOR_SEED:
+                raise RuntimeError("No response from server")
             pass  # expect empty queue for write
 
     def set_seed_key_algorithm(self, algorithm: callable) -> None:
