@@ -31,7 +31,7 @@ class Dm15Status(Enum):
 class Dm14Query:
     def __init__(self, ca: j1939.ControllerApplication) -> None:
         """
-        performs memory access queries using DM14-DM18 messaging.  Presently only read queries are supported
+        performs memory access queries using DM14-DM18 messaging.  Presently only read and write queries are supported
 
         :param obj ca: j1939 controller application
         """

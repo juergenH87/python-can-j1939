@@ -28,7 +28,6 @@ class DM14Server:
         self.state = ResponseState.IDLE
         self._key_from_seed = None
         self.data_queue = queue.Queue()
-        self.mem_data = None
         self._seed_generator = self.generate_seed
         self.address = None
         self.length = 8
@@ -45,15 +44,36 @@ class DM14Server:
         If the command is a read command, then the data requested is sent.
         """
         if self.command is j1939.Command.READ.value:
-            self._send_dm15()
+            self._send_dm15(
+                self.length,
+                self.direct,
+                self.status,
+                self.state,
+                self.object_count,
+                self.sa,
+            )
             self._send_dm16()
             self.proceed = True
             self.state = ResponseState.SEND_OPERATION_COMPLETE
             self._ca.subscribe(self.parse_dm14)
-            self._send_dm15()
+            self._send_dm15(
+                self.length,
+                self.direct,
+                self.status,
+                self.state,
+                self.object_count,
+                self.sa,
+            )
         else:
             self._ca.subscribe(self._parse_dm16)
-            self._send_dm15()
+            self._send_dm15(
+                self.length,
+                self.direct,
+                self.status,
+                self.state,
+                self.object_count,
+                self.sa,
+            )
             self.state = ResponseState.WAIT_FOR_DM16
 
     def parse_dm14(
@@ -76,22 +96,17 @@ class DM14Server:
             )
             or self._busy
         ):
-            sa_temp = self.sa
-            data_temp = self.data
-            status_tmp = self.status
-            state_tmp = self.state
-            direct_tmp = self.direct
-            self.state = j1939.ResponseState.SEND_ERROR
-            self.sa = sa
-            self.error = 0x2
-            self.edcp = 0x7
-            self.direct = data[1] >> 4
-            self._send_dm15()
-            self.sa = sa_temp
-            self.direct = direct_tmp
-            self.data = data_temp
-            self.status = status_tmp
-            self.state = state_tmp
+            self._send_dm15(
+                self.length,
+                data[1] >> 4,
+                j1939.Dm15Status.OPERATION_FAILED.value,
+                j1939.ResponseState.SEND_ERROR,
+                data[0],
+                sa,
+                j1939.ParameterGroupNumber.PGN.DM15,
+                0x2,
+                0x7,
+            )
             self.set_busy(False)
             return
 
@@ -111,7 +126,15 @@ class DM14Server:
                 self.data = data
                 if self._key_from_seed is not None:
                     self.state = ResponseState.WAIT_FOR_KEY
-                    self._send_dm15()
+                    self._pgn = j1939.ParameterGroupNumber.PGN.DM15
+                    self._send_dm15(
+                        self.length,
+                        self.direct,
+                        self.status,
+                        self.state,
+                        self.object_count,
+                        self.sa,
+                    )
                 else:
                     self.state = ResponseState.SEND_PROCEED
 
@@ -132,42 +155,62 @@ class DM14Server:
             case _:
                 raise ValueError("Invalid state")
 
-    def _send_dm15(self) -> None:
+    def _send_dm15(
+        self,
+        length: int,
+        direct: int,
+        status: int,
+        state: ResponseState,
+        object_count: int,
+        sa: int,
+        pgn: int = j1939.ParameterGroupNumber.PGN.DM15,
+        error: int = None,
+        edcp: int = None,
+    ) -> None:
         """
         Send DM15 message to device, used to send the proceed message,
         the generated seed, or the operation complete message
+        :param int length: length of data
+        :param int direct: value of direct transaction or not
+        :param int status: status of operation
+        :param ResponseState state: state of operation
+        :param int object_count: amount of objects to read
+        :param int sa: source address
+        :param int pgn: pgn value
+        :param int error: error code if necessary
+        :param int edcp: value of edcp for transaction
         """
         self._pgn = j1939.ParameterGroupNumber.PGN.DM15
-        data = [0xFF] * self.length
-        data[1] = (self.direct << 4) + (self.status << 1) + 1
-        match self.state:
+        data = [0xFF] * length
+        data[1] = (direct << 4) + (status << 1) + 1
+        match state:
             case ResponseState.WAIT_FOR_KEY:
                 self.seed = self._seed_generator()
                 data[0] = 0x00
-                data[self.length - 2] = self.seed & 0xFF
-                data[self.length - 1] = self.seed >> 8
+                data[length - 2] = self.seed & 0xFF
+                data[length - 1] = self.seed >> 8
 
             case ResponseState.SEND_PROCEED:
-                data[0] = self.object_count
+                data[0] = object_count
 
             case ResponseState.SEND_OPERATION_COMPLETE:
                 self.command = j1939.Command.OPERATION_COMPLETED.value
                 data[0] = 0x00
-                data[1] = (self.direct << 4) + (self.command << 1) + 1
+                data[1] = (direct << 4) + (self.command << 1) + 1
                 self.state = ResponseState.WAIT_OPERATION_COMPLETE
 
             case ResponseState.SEND_ERROR:
-                self.status = j1939.Dm15Status.OPERATION_FAILED.value
+                status = j1939.Dm15Status.OPERATION_FAILED.value
                 data[0] = 0x00
-                data[1] = (self.direct << 4) + (self.status << 1) + 1
-                data[self.length - 6] = self.error & 0xFF
-                data[self.length - 5] = (self.error >> 8) & 0xFF
-                data[self.length - 4] = self.error >> 16
-                data[self.length - 3] = self.edcp
+                data[1] = (direct << 4) + (status << 1) + 1
+                data[length - 6] = error & 0xFF
+                data[length - 5] = (error >> 8) & 0xFF
+                data[length - 4] = error >> 16
+                data[length - 3] = edcp
 
             case _:
                 raise ValueError("Invalid state")
-        self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 6, data)
+        self._ca.send_pgn(0, (pgn >> 8) & 0xFF, sa & 0xFF, 6, data)
 
     def _send_dm16(self) -> None:
         """
@@ -200,17 +243,22 @@ class DM14Server:
             return
 
         length = min(data[0], len(data) - 1)
-        # assert object_count == self.object_count
-        self.mem_data = data[1 : length + 1]
-        self.data_queue.put(data)
+        self.data_queue.put(data[1 : length + 1])
         self._ca.unsubscribe(self._parse_dm16)
         self._ca.subscribe(self.parse_dm14)
         self.state = ResponseState.SEND_OPERATION_COMPLETE
-        self._send_dm15()
+        self._send_dm15(
+            self.length,
+            self.direct,
+            self.status,
+            self.state,
+            self.object_count,
+            self.sa,
+        )
 
     def bytes_to_int(self, data: bytearray) -> int:
         """
-        Convert bytesaray to integer
+        Convert bytearray to integer
         :param bytearray data: bytearray to be converted to integer
         """
         return int.from_bytes(data, byteorder="little", signed=False)
@@ -274,10 +322,9 @@ class DM14Server:
             self.state = ResponseState.SEND_PROCEED
         else:
             self.state = ResponseState.SEND_ERROR
-        # self._ca.unsubscribe(self._parse_dm14)
         self._wait_for_data()
         mem_data = None
         if self.state == ResponseState.WAIT_FOR_DM16:
             mem_data = self.data_queue.get(block=True, timeout=3)
 
-        return self.mem_data if self.mem_data is not None else None
+        return mem_data

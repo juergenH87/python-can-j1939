@@ -41,6 +41,7 @@ class MemoryAccess:
                 self.state = DMState.REQUEST_STARTED
                 self.server.parse_dm14(priority, pgn, sa, timestamp, data)
                 if not self.seed_security:
+                    self.state = DMState.WAIT_RESPONSE
                     self._ca.unsubscribe(self._listen_for_dm14)
                     if self._notify_query_received is not None:
                         self._notify_query_received()  # notify incoming request
