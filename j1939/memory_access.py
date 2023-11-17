@@ -60,7 +60,7 @@ class MemoryAccess:
                 pass
 
     def respond(
-        self, proceed: bool, data=None, error: int = 0xFFFFFF, edcp: int = 0xFF
+        self, proceed: bool, data: list = None, error: int = 0xFFFFFF, edcp: int = 0xFF
     ) -> list:
         """
         Responds with requested data and error code, if applicable, to a read request
