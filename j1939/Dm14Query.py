@@ -246,7 +246,7 @@ class Dm14Query:
             else:
                 return self._bytes_to_values(raw_bytes)
         else:
-            return None
+            return []
 
     def write(
         self,
