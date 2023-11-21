@@ -162,6 +162,7 @@ def proceed(
     address: int,
     pointer_type: int,
     length: int,
+    object_count: int,
     key: int,
     source_addr: int,
     access_level: int,

@@ -49,6 +49,7 @@ class MemoryAccess:
                             self.server.address,
                             self.server.pointer_type,
                             self.server.length,
+                            self.server.object_count,
                             0xFFFF,  # placeholder for key
                             self.server.sa,
                             self.server.access_level,
@@ -76,6 +77,7 @@ class MemoryAccess:
                                     self.server.address,
                                     self.server.pointer_type,
                                     self.server.length,
+                                    self.server.object_count,
                                     self.server.key,
                                     self.server.sa,
                                     self.server.access_level,
