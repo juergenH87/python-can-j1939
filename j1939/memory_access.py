@@ -43,15 +43,63 @@ class MemoryAccess:
                 if not self.seed_security:
                     self.state = DMState.WAIT_RESPONSE
                     self._ca.unsubscribe(self._listen_for_dm14)
-                    if self._notify_query_received is not None:
-                        self._notify_query_received()  # notify incoming request
+                    if self._proceed_function is not None:
+                        self.proceed = self._proceed_function(
+                            self.server.command,
+                            self.server.address,
+                            self.server.pointer_type,
+                            self.server.length,
+                            0xFFFF,  # placeholder for key
+                            self.server.sa,
+                            self.server.access_level,
+                            0x0,  # placeholder for seed
+                        )  # call proceed function and pass in basic parameters
+                        if self.proceed:
+                            self._notify_query_received()  # notify incoming request
+                        else:
+                            self.server.error = 0x100
+                            self.server.set_busy(True)
+                            self.server.parse_dm14(priority, pgn, sa, timestamp, data)
+                            self.server.set_busy(False)
+                            self.state = DMState.IDLE
+                            self.server.error = 0x0
 
             case DMState.REQUEST_STARTED:
                 self.server.parse_dm14(priority, pgn, sa, timestamp, data)
                 if self.server.state == j1939.ResponseState.SEND_PROCEED:
                     self.state = DMState.WAIT_RESPONSE
-                    if self._notify_query_received is not None:
-                        self._notify_query_received()  # notify incoming request
+                    if self.seed_security:
+                        if self.server.verify_key(self.server.seed, self.server.key):
+                            if self._proceed_function is not None:
+                                self.proceed = self._proceed_function(
+                                    self.server.command,
+                                    self.server.address,
+                                    self.server.pointer_type,
+                                    self.server.length,
+                                    self.server.key,
+                                    self.server.sa,
+                                    self.server.access_level,
+                                    self.server.seed,
+                                )  # call proceed function and pass in basic parameters
+                                if self.proceed:
+                                    self._notify_query_received()  # notify incoming request
+                                else:
+                                    self.server.error = 0x100
+                                    self.server.set_busy(True)
+                                    self.server.parse_dm14(
+                                        priority, pgn, sa, timestamp, data
+                                    )
+                                    self.server.set_busy(False)
+                                    self.state = DMState.IDLE
+                                    self.server.error = 0x0
+                        else:
+                            self.server.error = 0x1003
+                            self.server.set_busy(True)
+                            self.server.parse_dm14(priority, pgn, sa, timestamp, data)
+                            self.server.set_busy(False)
+                            self.state = DMState.IDLE
+                            self.server.error = 0x0
+
             case DMState.WAIT_QUERY:
                 self.server.set_busy(True)
                 self.server.parse_dm14(priority, pgn, sa, timestamp, data)
@@ -159,3 +207,10 @@ class MemoryAccess:
         :param callable notify: notify function
         """
         self._notify_query_received = notify
+
+    def set_proceed(self, proceed: callable) -> None:
+        """
+        set proceed function to determine if a memory query is valid or not
+        :param callable proceed: proceed function
+        """
+        self._proceed_function = proceed

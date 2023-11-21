@@ -157,6 +157,30 @@ def teardown():
     reset_flag()
 
 
+def proceed(
+    command: int,
+    address: int,
+    pointer_type: int,
+    length: int,
+    key: int,
+    source_addr: int,
+    access_level: int,
+    seed: int,
+) -> bool:
+    """
+    Determines whether to proceed with the DM14 request
+    :param command: DM14 command
+    :param address: DM14 address
+    :param pointer_type: DM14 pointer type
+    :param length: DM14 length
+    :param key: key
+    :param source_addr: DM14 source address of message requesting access
+    :param access_level: DM14 access level
+    :param seed: DM14 seed
+    """
+    return True
+
+
 @pytest.mark.parametrize(
     argnames=["expected_messages"],
     argvalues=[[read_with_seed_key], [read_no_seed_key]],
@@ -228,7 +252,7 @@ def test_dm14_read_busy(
     dm14 = j1939.MemoryAccess(ca)
 
     dm14.set_seed_key_algorithm(key_from_seed)
-
+    dm14.set_proceed(proceed)
     dm14.read(0xD4, 1, 0x92000003, 1)
 
     feeder.process_messages()
@@ -261,7 +285,7 @@ def test_dm14_request_read(feeder, expected_messages):
 
     dm14 = j1939.MemoryAccess(ca)
     dm14.set_seed_generator(generate_seed)
-
+    dm14.set_proceed(proceed)
     dm14.set_notify(global_flag)
 
     if expected_messages == request_read_with_seed:
@@ -298,7 +322,7 @@ def test_dm14_request_read_busy(feeder):
     dm14.set_seed_generator(generate_seed)
 
     dm14.set_notify(global_flag)
-
+    dm14.set_proceed(proceed)
     dm14.set_seed_key_algorithm(key_from_seed)
 
     while flag is False:
@@ -333,7 +357,7 @@ def test_dm14_busy_diff_addr(feeder):
     dm14.set_seed_generator(generate_seed)
 
     dm14.set_notify(global_flag)
-
+    dm14.set_proceed(proceed)
     dm14.set_seed_key_algorithm(key_from_seed)
 
     while flag is False:
@@ -373,7 +397,7 @@ def test_dm14_request_write(feeder, expected_messages):
 
     dm14 = j1939.MemoryAccess(ca)
     dm14.set_seed_generator(generate_seed)
-
+    dm14.set_proceed(proceed)
     dm14.set_notify(global_flag)
 
     if expected_messages == request_write_with_seed:
@@ -411,7 +435,7 @@ def test_dm14_request_write_timeout(feeder):
 
         dm14 = j1939.MemoryAccess(ca)
         dm14.set_seed_generator(generate_seed)
-
+        dm14.set_proceed(proceed)
         dm14.set_notify(global_flag)
 
         values = 0x11223344

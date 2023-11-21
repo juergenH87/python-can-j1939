@@ -104,7 +104,7 @@ class DM14Server:
                 data[0],
                 sa,
                 j1939.ParameterGroupNumber.PGN.DM15,
-                0x2,
+                self.error if self.error is not 0x00 else 0x2,
                 0x7,
             )
             self.set_busy(False)
@@ -121,6 +121,7 @@ class DM14Server:
                 self.address = data[2 : (self.length - 2)]
                 self.direct = data[1] >> 4
                 self.command = ((data[1] - 1) & 0x0F) >> 1
+                self.pointer_type = (data[1] >> 4) & 0x1
                 self.object_count = data[0]
                 self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
                 self.data = data
@@ -292,6 +293,15 @@ class DM14Server:
         :param callable algorithm: seed generation algorithm
         """
         self._seed_generator = algorithm
+
+    def verify_key(self, seed: int, key: int) -> bool:
+        """
+        Checks to see if key is valid
+        :param int seed: seed
+        :param int key: key
+        """
+        test = self._key_from_seed(seed)
+        return True if self._key_from_seed(seed) == key else False
 
     def respond(
         self,
