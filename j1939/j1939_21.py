@@ -53,6 +53,8 @@ class J1939_21:
         # set minimum time between two tp-bam messages
         if minimum_tp_bam_dt_interval == None:
             self._minimum_tp_bam_dt_interval = self.Timeout.Tb
+        else:
+            self._minimum_tp_bam_dt_interval = minimum_tp_bam_dt_interval
 
         # number of packets that can be sent/received with CMDT (Connection Mode Data Transfer)
         self._max_cmdt_packets = max_cmdt_packets
