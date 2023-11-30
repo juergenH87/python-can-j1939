@@ -29,6 +29,8 @@ class ElectronicControlUnit:
         self._bus = None
         # Locking object for send
         self._send_lock = threading.Lock()
+        # Locking object for _timer_events list
+        self._events_list_lock = threading.Lock()
 
         if max_cmdt_packets > 0xFF:
             raise ValueError("max number of segments that can be sent is 0xFF")
@@ -85,7 +87,14 @@ class ElectronicControlUnit:
             'cookie': cookie,
             }
 
-        self._timer_events.append( d )
+        res = self._events_list_lock.acquire(timeout = 1.0)
+        if res:
+            self._timer_events.append( d )
+
+            self._events_list_lock.release()
+        else:
+            logger.error("_events_list_lock acquire failed")
+
         self._job_thread_wakeup()
 
     def remove_timer(self, callback):
@@ -94,9 +103,19 @@ class ElectronicControlUnit:
         :param callback:
             The callback to be removed from the timer event list
         """
-        for event in self._timer_events:
-            if event['callback'] == callback:
-                self._timer_events.remove( event )
+        res = self._events_list_lock.acquire(timeout = 1.0)
+        if res:
+            for event in self._timer_events[:]:
+                if event['callback'] == callback:
+                    try:
+                        self._timer_events.remove( event )
+                    except Exception as e:
+                        logger.error(str(e))
+
+            self._events_list_lock.release()
+        else:
+            logger.error("_events_list_lock acquire failed")
+
         self._job_thread_wakeup()
 
     def connect(self, *args, **kwargs):
@@ -282,24 +301,33 @@ class ElectronicControlUnit:
             next_wakeup = self.j1939_dll.async_job_thread(now)
 
             # check timer events
-            for event in self._timer_events:
-                if event['deadline'] > now:
-                    if next_wakeup > event['deadline']:
-                        next_wakeup = event['deadline']
-                else:
-                    # deadline reached
-                    logger.debug("Deadline for event reached")
-                    if event['callback']( event['cookie'] ) == True:
-                        # "true" means the callback wants to be called again
-                        while event['deadline'] < now:
-                            # just to take care of overruns
-                            event['deadline'] += event['delta_time']
-                        # recalc next wakeup
+            res = self._events_list_lock.acquire(timeout = 1.0)
+            if res:
+                for event in self._timer_events[:]:
+                    if event['deadline'] > now:
                         if next_wakeup > event['deadline']:
                             next_wakeup = event['deadline']
                     else:
-                        # remove from list
-                        self._timer_events.remove( event )
+                        # deadline reached
+                        logger.debug("Deadline for event reached")
+                        if event['callback']( event['cookie'] ) == True:
+                            # "true" means the callback wants to be called again
+                            while event['deadline'] < now:
+                                # just to take care of overruns
+                                event['deadline'] += event['delta_time']
+                            # recalc next wakeup
+                            if next_wakeup > event['deadline']:
+                                next_wakeup = event['deadline']
+                        else:
+                            # remove from list
+                            try:
+                                self._timer_events.remove( event )
+                            except Exception as e:
+                                logger.error(str(e))
+
+                self._events_list_lock.release()
+            else:
+                logger.error("_events_list_lock acquire failed")
 
             time_to_sleep = next_wakeup - time.time()
             if time_to_sleep > 0:
