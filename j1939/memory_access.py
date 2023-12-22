@@ -1,4 +1,3 @@
-import struct
 from enum import Enum
 import j1939
 
@@ -48,7 +47,11 @@ class MemoryAccess:
                         if self._proceed_function is not None:
                             self.proceed = self._proceed_function(
                                 self.server.command,
-                                int.from_bytes(bytes=self.server.address, byteorder="little", signed=False),
+                                int.from_bytes(
+                                    bytes=self.server.address,
+                                    byteorder="little",
+                                    signed=False,
+                                ),
                                 self.server.pointer_type,
                                 self.server.length,
                                 self.server.object_count,
@@ -80,7 +83,11 @@ class MemoryAccess:
                                 if self._proceed_function is not None:
                                     self.proceed = self._proceed_function(
                                         self.server.command,
-                                        int.from_bytes(bytes=self.server.address, byteorder="little", signed=False),
+                                        int.from_bytes(
+                                            bytes=self.server.address,
+                                            byteorder="little",
+                                            signed=False,
+                                        ),
                                         self.server.pointer_type,
                                         self.server.length,
                                         self.server.object_count,
@@ -99,7 +106,7 @@ class MemoryAccess:
                                         )
                                         self.server.set_busy(False)
                                         self.state = DMState.IDLE
-                                        self.server.error = 0x0
+                                        self.server.error = 0x0  # Bugfix needed here if bad address server state doesn't reset but it needs to
                             else:
                                 self.server.error = 0x1003
                                 self.server.set_busy(True)
