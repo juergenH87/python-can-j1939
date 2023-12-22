@@ -3,7 +3,11 @@ import j1939
 
 
 class DMState(Enum):
+class DMState(Enum):
     IDLE = 1
+    REQUEST_STARTED = 2
+    WAIT_RESPONSE = 3
+    WAIT_QUERY = 4
     REQUEST_STARTED = 2
     WAIT_RESPONSE = 3
     WAIT_QUERY = 4
@@ -11,7 +15,11 @@ class DMState(Enum):
 
 class MemoryAccess:
     def __init__(self, ca: j1939.ControllerApplication) -> None:
+class MemoryAccess:
+    def __init__(self, ca: j1939.ControllerApplication) -> None:
         """
+        Makes an overarching Memory access class
+        :param ca: Controller Application
         Makes an overarching Memory access class
         :param ca: Controller Application
         """
@@ -144,6 +152,7 @@ class MemoryAccess:
             return self.server.respond(proceed, data, error, edcp)
         else:
             return data
+            return data
 
     def read(
         self,
@@ -179,7 +188,40 @@ class MemoryAccess:
             )
             self.state = DMState.IDLE
             return data
+        dest_address: int,
+        direct: int,
+        address: int,
+        object_count: int,
+        object_byte_size: int = 1,
+        signed: bool = False,
+        return_raw_bytes: bool = False,
+    ) -> list:
+        """
+        Make a dm14 read Query
+        :param int dest_address: destination address of the message
+        :param int direct: direct address of the message
+        :param int address: address of the message
+        :param int object_count: number of objects to be read
+        :param int object_byte_size: size of each object in bytes
+        :param bool signed: whether the data is signed
+        :param bool return_raw_bytes: whether to return raw bytes or values
+        """
+        if self.state == DMState.IDLE:
+            self.state = DMState.WAIT_QUERY
+            self.address = dest_address
+            data = self.query.read(
+                dest_address,
+                direct,
+                address,
+                object_count,
+                object_byte_size,
+                signed,
+                return_raw_bytes,
+            )
+            self.state = DMState.IDLE
+            return data
         else:
+            raise RuntimeWarning("Process already Running")
             raise RuntimeWarning("Process already Running")
 
     def write(
@@ -210,7 +252,57 @@ class MemoryAccess:
         :param seed_generator: seed generator function
         """
         self.server.set_seed_generator(seed_generator)
+    def write(
+        self,
+        dest_address: int,
+        direct: int,
+        address: int,
+        values: list,
+        object_byte_size: int = 1,
+    ) -> None:
+        """
+        Send a write query to dest_address, requesting to write values at address
+        :param int dest_address: destination address of the message
+        :param int direct: direct address of the message
+        :param int address: address of the message
+        :param list values: values to be written
+        :param int object_byte_size: size of each object in bytes
+        """
+        if self.state == DMState.IDLE:
+            self.state = DMState.WAIT_QUERY
+            self.address = dest_address
+            self.query.write(dest_address, direct, address, values, object_byte_size)
+            self.state = DMState.IDLE
 
+    def set_seed_generator(self, seed_generator: callable) -> None:
+        """
+        Sets seed generator function to use
+        :param seed_generator: seed generator function
+        """
+        self.server.set_seed_generator(seed_generator)
+
+    def set_seed_key_algorithm(self, algorithm: callable) -> None:
+        """
+        set seed-key algorithm to be used for key generation
+        :param callable algorithm: seed-key algorithm
+        """
+        self.seed_security = True
+        self.query.set_seed_key_algorithm(algorithm)
+        self.server.set_seed_key_algorithm(algorithm)
+
+    def set_notify(self, notify: callable) -> None:
+        """
+        set notify function to be used for notifying the user of memory accesses
+        :param callable notify: notify function
+        """
+        self._notify_query_received = notify
+
+    def set_proceed(self, proceed: callable) -> None:
+        """
+        set proceed function to determine if a memory query is valid or not
+        :param callable proceed: proceed function
+        """
+        self._proceed_function = proceed
     def set_seed_key_algorithm(self, algorithm: callable) -> None:
         """
         set seed-key algorithm to be used for key generation
