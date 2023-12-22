@@ -1,3 +1,4 @@
+import struct
 from enum import Enum
 import j1939
 
@@ -47,7 +48,7 @@ class MemoryAccess:
                         if self._proceed_function is not None:
                             self.proceed = self._proceed_function(
                                 self.server.command,
-                                self.server.address,
+                                int.from_bytes(bytes=self.server.address, byteorder="little", signed=False),
                                 self.server.pointer_type,
                                 self.server.length,
                                 self.server.object_count,
@@ -61,7 +62,9 @@ class MemoryAccess:
                             else:
                                 self.server.error = 0x100
                                 self.server.set_busy(True)
-                                self.server.parse_dm14(priority, pgn, sa, timestamp, data)
+                                self.server.parse_dm14(
+                                    priority, pgn, sa, timestamp, data
+                                )
                                 self.server.set_busy(False)
                                 self.state = DMState.IDLE
                                 self.server.error = 0x0
@@ -71,11 +74,13 @@ class MemoryAccess:
                     if self.server.state == j1939.ResponseState.SEND_PROCEED:
                         self.state = DMState.WAIT_RESPONSE
                         if self.seed_security:
-                            if self.server.verify_key(self.server.seed, self.server.key):
+                            if self.server.verify_key(
+                                self.server.seed, self.server.key
+                            ):
                                 if self._proceed_function is not None:
                                     self.proceed = self._proceed_function(
                                         self.server.command,
-                                        self.server.address,
+                                        int.from_bytes(bytes=self.server.address, byteorder="little", signed=False),
                                         self.server.pointer_type,
                                         self.server.length,
                                         self.server.object_count,
@@ -98,7 +103,9 @@ class MemoryAccess:
                             else:
                                 self.server.error = 0x1003
                                 self.server.set_busy(True)
-                                self.server.parse_dm14(priority, pgn, sa, timestamp, data)
+                                self.server.parse_dm14(
+                                    priority, pgn, sa, timestamp, data
+                                )
                                 self.server.set_busy(False)
                                 self.state = DMState.IDLE
                                 self.server.error = 0x0
