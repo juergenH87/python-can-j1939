@@ -69,6 +69,7 @@ class MemoryAccess:
                                     priority, pgn, sa, timestamp, data
                                 )
                                 self.server.set_busy(False)
+                                self.server.reset_query()
                                 self.state = DMState.IDLE
                                 self.server.error = 0x0
 
@@ -105,8 +106,9 @@ class MemoryAccess:
                                             priority, pgn, sa, timestamp, data
                                         )
                                         self.server.set_busy(False)
+                                        self.server.reset_query()
                                         self.state = DMState.IDLE
-                                        self.server.error = 0x0  # Bugfix needed here if bad address server state doesn't reset but it needs to
+                                        self.server.error = 0x0
                             else:
                                 self.server.error = 0x1003
                                 self.server.set_busy(True)

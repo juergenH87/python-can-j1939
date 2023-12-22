@@ -303,6 +303,15 @@ class DM14Server:
         test = self._key_from_seed(seed)
         return True if self._key_from_seed(seed) == key else False
 
+    def reset_query(self) -> None:
+        """
+        Resets query to initial state
+        """
+        self.state = ResponseState.IDLE
+        self.sa = None
+        self._ca.unsubscribe(self.parse_dm14)
+        self._ca.unsubscribe(self._parse_dm16)
+
     def respond(
         self,
         proceed: bool,
