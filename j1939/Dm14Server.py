@@ -221,8 +221,7 @@ class DM14Server:
         data = []
         byte_count = len(self.data)
         data.append(0xFF if byte_count > 7 else byte_count)
-
-        for i in range(byte_count):
+        for i in range((byte_count - 1) if byte_count > 1 else byte_count):
             data.append(self.data[i])
 
         data.extend([0xFF] * (self.length - byte_count - 1))
@@ -300,7 +299,6 @@ class DM14Server:
         :param int seed: seed
         :param int key: key
         """
-        test = self._key_from_seed(seed)
         return True if self._key_from_seed(seed) == key else False
 
     def reset_query(self) -> None:
@@ -309,6 +307,17 @@ class DM14Server:
         """
         self.state = ResponseState.IDLE
         self.sa = None
+        self.seed = None
+        self.key = None
+        self._busy = False
+        self.address = None
+        self.length = 8
+        self.proceed = False
+        self.data = []
+        self.error = 0x00
+        self.edcp = 0x07
+        self.status = j1939.Dm15Status.PROCEED.value
+        self.direct = 0
         self._ca.unsubscribe(self.parse_dm14)
         self._ca.unsubscribe(self._parse_dm16)
 
@@ -345,5 +354,4 @@ class DM14Server:
         mem_data = None
         if self.state == ResponseState.WAIT_FOR_DM16:
             mem_data = self.data_queue.get(block=True, timeout=3)
-
         return mem_data

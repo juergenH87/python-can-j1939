@@ -39,39 +39,40 @@ class MemoryAccess:
         if pgn == j1939.ParameterGroupNumber.PGN.DM14:
             match self.state:
                 case DMState.IDLE:
-                    self.state = DMState.REQUEST_STARTED
-                    self.server.parse_dm14(priority, pgn, sa, timestamp, data)
-                    if not self.seed_security:
-                        self.state = DMState.WAIT_RESPONSE
-                        self._ca.unsubscribe(self._listen_for_dm14)
-                        if self._proceed_function is not None:
-                            self.proceed = self._proceed_function(
-                                self.server.command,
-                                int.from_bytes(
-                                    bytes=self.server.address,
-                                    byteorder="little",
-                                    signed=False,
-                                ),
-                                self.server.pointer_type,
-                                self.server.length,
-                                self.server.object_count,
-                                0xFFFF,  # placeholder for key
-                                self.server.sa,
-                                self.server.access_level,
-                                0x0,  # placeholder for seed
-                            )  # call proceed function and pass in basic parameters
-                            if self.proceed:
-                                self._notify_query_received()  # notify incoming request
-                            else:
-                                self.server.error = 0x100
-                                self.server.set_busy(True)
-                                self.server.parse_dm14(
-                                    priority, pgn, sa, timestamp, data
-                                )
-                                self.server.set_busy(False)
-                                self.server.reset_query()
-                                self.state = DMState.IDLE
-                                self.server.error = 0x0
+                    if self.server.state.value == DMState.IDLE.value:
+                        self.state = DMState.REQUEST_STARTED
+                        self.server.parse_dm14(priority, pgn, sa, timestamp, data)
+                        if not self.seed_security:
+                            self.state = DMState.WAIT_RESPONSE
+                            self._ca.unsubscribe(self._listen_for_dm14)
+                            if self._proceed_function is not None:
+                                self.proceed = self._proceed_function(
+                                    self.server.command,
+                                    int.from_bytes(
+                                        bytes=self.server.address,
+                                        byteorder="little",
+                                        signed=False,
+                                    ),
+                                    self.server.pointer_type,
+                                    self.server.length,
+                                    self.server.object_count,
+                                    0xFFFF,  # placeholder for key
+                                    self.server.sa,
+                                    self.server.access_level,
+                                    0x0,  # placeholder for seed
+                                )  # call proceed function and pass in basic parameters
+                                if self.proceed:
+                                    self._notify_query_received()  # notify incoming request
+                                else:
+                                    self.server.error = 0x100
+                                    self.server.set_busy(True)
+                                    self.server.parse_dm14(
+                                        priority, pgn, sa, timestamp, data
+                                    )
+                                    self.server.set_busy(False)
+                                    self.server.reset_query()
+                                    self.state = DMState.IDLE
+                                    self.server.error = 0x0
 
                 case DMState.REQUEST_STARTED:
                     self.server.parse_dm14(priority, pgn, sa, timestamp, data)
@@ -141,7 +142,9 @@ class MemoryAccess:
         if self.state is DMState.WAIT_RESPONSE:
             self._ca.unsubscribe(self._listen_for_dm14)
             self.state = DMState.IDLE
-            return self.server.respond(proceed, data, error, edcp)
+            return_data = self.server.respond(proceed, data, error, edcp)
+            self._ca.subscribe(self._listen_for_dm14)
+            return return_data
         else:
             return data
 
@@ -233,3 +236,10 @@ class MemoryAccess:
         :param callable proceed: proceed function
         """
         self._proceed_function = proceed
+
+    def reset_query(self) -> None:
+        """
+        reset query for the server
+        """
+        self._ca.subscribe(self._listen_for_dm14)
+        self.server.reset_query()
