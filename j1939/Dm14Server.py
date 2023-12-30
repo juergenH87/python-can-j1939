@@ -221,7 +221,7 @@ class DM14Server:
         data = []
         byte_count = len(self.data)
         data.append(0xFF if byte_count > 7 else byte_count)
-        for i in range((7) if byte_count > 7 else byte_count)::
+        for i in range((7) if byte_count > 7 else byte_count):
             data.append(self.data[i])
 
         data.extend([0xFF] * (self.length - byte_count - 1))
