@@ -105,7 +105,7 @@ class DM14Server:
                 data[0],
                 sa,
                 j1939.ParameterGroupNumber.PGN.DM15,
-                self.error if self.error is not 0x00 else 0x2,
+                self.error if self.error != 0x00 else 0x2,
                 0x7,
             )
             self.set_busy(False)
