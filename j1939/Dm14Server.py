@@ -53,17 +53,18 @@ class DM14Server:
                 self.sa,
             )
             self._send_dm16()
-            self.proceed = True
-            self.state = ResponseState.SEND_OPERATION_COMPLETE
-            self._ca.subscribe(self.parse_dm14)
-            self._send_dm15(
-                self.length,
-                self.direct,
-                self.status,
-                self.state,
-                self.object_count,
-                self.sa,
-            )
+            if (len(self.data)) <= 8:
+                self.proceed = True
+                self.state = ResponseState.SEND_OPERATION_COMPLETE
+                self._ca.subscribe(self.parse_dm14)
+                self._send_dm15(
+                    self.length,
+                    self.direct,
+                    self.status,
+                    self.state,
+                    self.object_count,
+                    self.sa,
+                )
         else:
             self._ca.subscribe(self._parse_dm16)
             self._send_dm15(
@@ -221,10 +222,12 @@ class DM14Server:
         data = []
         byte_count = len(self.data)
         data.append(0xFF if byte_count > 7 else byte_count)
-        for i in range((7) if byte_count > 7 else byte_count):
+        for i in range((byte_count)):
             data.append(self.data[i])
 
         data.extend([0xFF] * (self.length - byte_count - 1))
+        if byte_count > 8:
+            self._ca.subscribe(self._parse_dm16)
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 7, data)
 
     def _parse_dm16(
