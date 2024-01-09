@@ -174,6 +174,7 @@ def proceed(
     :param address: DM14 address
     :param pointer_type: DM14 pointer type
     :param length: DM14 length
+    :param object_count: number of objects to read
     :param key: key
     :param source_addr: DM14 source address of message requesting access
     :param access_level: DM14 access level
