@@ -271,9 +271,6 @@ class ElectronicControlUnit:
         to awake at the new events.
         """
         system = sys.platform
-        if system.startswith("win32") or system.startswith("cygwin"):
-            import pythoncom
-            pythoncom.CoInitialize()
 
         while not self._job_thread_end.is_set():
 
