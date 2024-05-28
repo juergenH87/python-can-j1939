@@ -204,15 +204,24 @@ class ElectronicControlUnit:
             A :class:`can.BusABC` object.
         """
         self._bus = bus
-        self._notifier = can.Notifier(self._bus, self._listeners, 1)
 
+    def add_notifier(self, notifier):
+        """Add a notifier to the ECU.
+
+        :param notifier:
+            A :class:`can.Notifier` object.
+        """
+        self._notifier = notifier
+        for listener in self._listeners:
+            self._notifier.add_listener(listener)
+            
     def remove_bus(self):
         """Remove the bus from the ECU.
         """
         self._notifier.stop()
         self._bus.shutdown()
         self._bus = None
-        
+    
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
         """send a pgn
         :param int data_page: data page
