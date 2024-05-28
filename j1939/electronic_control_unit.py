@@ -117,7 +117,8 @@ class ElectronicControlUnit:
         :raises can.CanError:
             When connection fails.
         """
-        self._bus = can.interface.Bus(*args, **kwargs)
+        if self._bus is None:
+            self._bus = can.interface.Bus(*args, **kwargs)
         logger.info("Connected to '%s'", self._bus.channel_info)
         self._notifier = can.Notifier(self._bus, self._listeners, 1)
         return self._bus
@@ -196,6 +197,22 @@ class ElectronicControlUnit:
         """
         return self.j1939_dll.remove_ca(device_address)
 
+    def add_bus(self, bus):
+        """Add a bus to the ECU.
+
+        :param bus:
+            A :class:`can.BusABC` object.
+        """
+        self._bus = bus
+        self._notifier = can.Notifier(self._bus, self._listeners, 1)
+
+    def remove_bus(self):
+        """Remove the bus from the ECU.
+        """
+        self._notifier.stop()
+        self._bus.shutdown()
+        self._bus = None
+        
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
         """send a pgn
         :param int data_page: data page
