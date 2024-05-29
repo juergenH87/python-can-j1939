@@ -218,8 +218,6 @@ class ElectronicControlUnit:
     def remove_bus(self):
         """Remove the bus from the ECU.
         """
-        self._notifier.stop()
-        self._bus.shutdown()
         self._bus = None
     
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
