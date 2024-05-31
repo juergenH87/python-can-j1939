@@ -117,8 +117,7 @@ class ElectronicControlUnit:
         :raises can.CanError:
             When connection fails.
         """
-        if self._bus is None:
-            self._bus = can.interface.Bus(*args, **kwargs)
+        self._bus = can.interface.Bus(*args, **kwargs)
         logger.info("Connected to '%s'", self._bus.channel_info)
         self._notifier = can.Notifier(self._bus, self._listeners, 1)
         return self._bus
