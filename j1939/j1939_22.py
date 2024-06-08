@@ -591,6 +591,8 @@ class J1939_22:
                 self.__put_rts_cts_session(session_num)
                 return
             # TODO: should we inform the application about the successful transmission?
+            # Notify subscribers here to be used for the memory access server to know when to send operation complete
+            self.__notify_subscribers(mid.priority, pgn, mid.source_address, dest_address, timestamp, data)
             self._snd_buffer[buffer_hash]['state'] = self.SendBufferState.EOM_ACK_RECEIVED
             self._snd_buffer[buffer_hash]['deadline'] = time.time() # wake up immediately
             self.__job_thread_wakeup()

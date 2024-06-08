@@ -344,6 +344,9 @@ class J1939_21:
                 self.__send_tp_abort(dest_address, src_address, self.ConnectionAbortReason.RESOURCES, pgn)
                 return
             # TODO: should we inform the application about the successful transmission?
+            # Notify subscribers here to be used for the memory access server to know when to send operation complete
+            self.__notify_subscribers(mid.priority,pgn,mid.source_address,dest_address,timestamp,data)
+
             self._snd_buffer[buffer_hash]['state'] = self.SendBufferState.TRANSMISSION_FINISHED
             self._snd_buffer[buffer_hash]['deadline'] = time.time()
             self.__job_thread_wakeup()
