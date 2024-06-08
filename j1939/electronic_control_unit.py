@@ -381,9 +381,10 @@ class MessageListener(Listener):
 
     def __init__(self, ecu : ElectronicControlUnit):
         self.ecu = ecu
+        self.stopped = False
 
     def on_message_received(self, msg : can.Message):
-        if msg.is_error_frame or msg.is_remote_frame or (msg.is_extended_id == False):
+        if self.stopped or msg.is_error_frame or msg.is_remote_frame or (msg.is_extended_id == False):
             return
 
         try:
@@ -391,3 +392,6 @@ class MessageListener(Listener):
         except Exception as e:
             # Exceptions in any callbaks should not affect CAN processing
             logger.error(str(e))
+
+    def stop(self):
+        self.stopped = True
