@@ -1,9 +1,9 @@
 import time
 
+import can
 import j1939
 from test_helpers.feeder import Feeder
 from test_helpers.conftest import feeder
-
 
 def receive(feeder):
     feeder.ecu.subscribe(on_message)
@@ -165,3 +165,24 @@ def test_broadcast_send_long(feeder):
 
     feeder.send(pdu, 144, pdu[1])
 
+def test_add_bus(feeder):
+    """
+    Test adding and removing a bus to the ECU
+    """
+    bus = can.interface.Bus(interface="virtual", channel=1)
+    feeder.ecu.add_bus(bus)
+    assert feeder.ecu._bus == bus
+    feeder.ecu.remove_bus()
+    assert feeder.ecu._bus == None
+
+def test_add_notfier(feeder):
+    """
+    Test adding and removing a notifier to the ECU
+    """
+    bus = can.interface.Bus(interface="virtual", channel=1)
+    feeder.ecu.add_bus(bus)
+    notifier = can.Notifier(bus=bus, listeners=[])
+    feeder.ecu.add_notifier(notifier)
+    assert feeder.ecu._notifier == notifier
+    feeder.ecu.remove_notifier()
+    assert feeder.ecu._notifier == None

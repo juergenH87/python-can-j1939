@@ -219,6 +219,13 @@ class ElectronicControlUnit:
         """
         self._bus = None
     
+    def remove_notifier(self):
+        """Remove the notifier from the ECU.
+        """
+        for listener in self._listeners:
+            self._notifier.remove_listener(listener)
+        self._notifier = None
+
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
         """send a pgn
         :param int data_page: data page
