@@ -5,6 +5,7 @@ import j1939
 from test_helpers.feeder import Feeder
 from test_helpers.conftest import feeder
 
+
 def receive(feeder):
     feeder.ecu.subscribe(on_message)
     feeder.inject_messages_into_ecu()
