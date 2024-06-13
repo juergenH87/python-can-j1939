@@ -196,6 +196,36 @@ class ElectronicControlUnit:
         """
         return self.j1939_dll.remove_ca(device_address)
 
+    def add_bus(self, bus):
+        """Add a bus to the ECU.
+
+        :param bus:
+            A :class:`can.BusABC` object.
+        """
+        self._bus = bus
+
+    def add_notifier(self, notifier):
+        """Add a notifier to the ECU.
+
+        :param notifier:
+            A :class:`can.Notifier` object.
+        """
+        self._notifier = notifier
+        for listener in self._listeners:
+            self._notifier.add_listener(listener)
+            
+    def remove_bus(self):
+        """Remove the bus from the ECU.
+        """
+        self._bus = None
+    
+    def remove_notifier(self):
+        """Remove the notifier from the ECU.
+        """
+        for listener in self._listeners:
+            self._notifier.remove_listener(listener)
+        self._notifier = None
+
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
         """send a pgn
         :param int data_page: data page
@@ -355,9 +385,10 @@ class MessageListener(Listener):
 
     def __init__(self, ecu : ElectronicControlUnit):
         self.ecu = ecu
+        self.stopped = False
 
     def on_message_received(self, msg : can.Message):
-        if msg.is_error_frame or msg.is_remote_frame or (msg.is_extended_id == False):
+        if self.stopped or msg.is_error_frame or msg.is_remote_frame or (msg.is_extended_id == False):
             return
 
         try:
@@ -365,3 +396,6 @@ class MessageListener(Listener):
         except Exception as e:
             # Exceptions in any callbaks should not affect CAN processing
             logger.error(str(e))
+
+    def stop(self):
+        self.stopped = True
