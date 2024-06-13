@@ -51,20 +51,27 @@ class DM14Server:
                 self.state,
                 self.object_count,
                 self.sa,
+                j1939.ParameterGroupNumber.PGN.DM15,
+                self.error,
+                self.edcp,
             )
-            self._send_dm16()
-            if (len(self.data)) <= 8:
-                self.proceed = True
-                self.state = ResponseState.SEND_OPERATION_COMPLETE
-                self._ca.subscribe(self.parse_dm14)
-                self._send_dm15(
-                    self.length,
-                    self.direct,
-                    self.status,
-                    self.state,
-                    self.object_count,
-                    self.sa,
-                )
+            if self.state == ResponseState.SEND_PROCEED:
+                self._send_dm16()
+                if (len(self.data)) <= 8:
+                    self.proceed = True
+                    self.state = ResponseState.SEND_OPERATION_COMPLETE
+                    self._ca.subscribe(self.parse_dm14)
+                    self._send_dm15(
+                        self.length,
+                        self.direct,
+                        self.status,
+                        self.state,
+                        self.object_count,
+                        self.sa,
+                    )
+            else:
+                self.state = ResponseState.IDLE
+                self.sa = None
         else:
             self._ca.subscribe(self._parse_dm16)
             self._send_dm15(
