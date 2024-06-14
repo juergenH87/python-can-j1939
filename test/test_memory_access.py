@@ -126,9 +126,14 @@ request_write_no_seed_timeout = [
 ]
 
 read_with_seed_error = [
-    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00], 0.0),  # DM14 read address 0x91000007
+    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00], 0.0),  # DM14 read address 0x92000007
     (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x11, 0xFF, 0xFF, 0xFF, 0xFF, 0x5A, 0xA5], 0.0),  # DM15 seed response
     (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0xA5, 0x5A], 0.0),  # DM14 key response
+    (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x1B, 0x01, 0x00, 0x00, 0x07, 0xFF, 0xFF], 0.0),  # DM15 error response
+]
+
+read_no_seed_error = [
+    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00], 0.0),  # DM14 read address 0x92000007
     (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x1B, 0x01, 0x00, 0x00, 0x07, 0xFF, 0xFF], 0.0),  # DM15 error response
 ]
 
@@ -136,6 +141,11 @@ write_with_seed_error = [
     (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x15, 0x07, 0x00, 0x00, 0x91, 0x07, 0x00], 0.0),  # DM14 write address 0x91000007
     (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x11, 0xFF, 0xFF, 0xFF, 0xFF, 0x5A, 0xA5], 0.0),  # DM15 seed response
     (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x15, 0x07, 0x00, 0x00, 0x91, 0xA5, 0x5A], 0.0),  # DM14 key response
+    (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x1B, 0x01, 0x00, 0x00, 0x07, 0xFF, 0xFF], 0.0),  # DM15 error response
+]
+
+write_no_seed_error = [
+    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x15, 0x07, 0x00, 0x00, 0x91, 0x07, 0x00], 0.0),  # DM14 write address 0x91000007
     (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x1B, 0x01, 0x00, 0x00, 0x07, 0xFF, 0xFF], 0.0),  # DM15 error response
 ]
 
@@ -668,13 +678,19 @@ def test_dm14_write_error(feeder, error_code):
     feeder.process_messages()
 
 
-def test_dm14_read_error_response(feeder):
+@pytest.mark.parametrize(
+    argnames=["expected_messages"],
+    argvalues=[[read_with_seed_error], [read_no_seed_error]],
+    ids=["With seed key", "Without seed key"],
+)
+def test_dm14_read_error_response(feeder, expected_messages):
     """
     Tests that the DM14 read query can react to errors correctly
     :param feeder: can message feeder
+    :param expected_messages: list of expected messages
     """
     with pytest.raises(RuntimeError) as excinfo:
-        feeder.can_messages = read_with_seed_error
+        feeder.can_messages = expected_messages
         feeder.pdus_from_messages()
         ca = feeder.accept_all_messages(
             device_address_preferred=0xF9, bypass_address_claim=True
@@ -688,13 +704,19 @@ def test_dm14_read_error_response(feeder):
     feeder.process_messages()
 
 
-def test_dm14_write_error_response(feeder):
+@pytest.mark.parametrize(
+    argnames=["expected_messages"],
+    argvalues=[[write_with_seed_error], [write_no_seed_error]],
+    ids=["With seed key", "Without seed key"],
+)
+def test_dm14_write_error_response(feeder, expected_messages):
     """
     Tests that the DM14 read query can react to errors correctly
     :param feeder: can message feeder
+    :param expected_messages: list of expected messages
     """
     with pytest.raises(RuntimeError) as excinfo:
-        feeder.can_messages = write_with_seed_error
+        feeder.can_messages = expected_messages
         feeder.pdus_from_messages()
         ca = feeder.accept_all_messages(
             device_address_preferred=0xF9, bypass_address_claim=True
