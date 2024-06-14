@@ -81,8 +81,16 @@ class DM14Server:
                 self.state,
                 self.object_count,
                 self.sa,
+                j1939.ParameterGroupNumber.PGN.DM15,
+                self.error,
+                self.edcp,
             )
-            self.state = ResponseState.WAIT_FOR_DM16
+            if self.state == ResponseState.SEND_PROCEED:
+                self.state = ResponseState.WAIT_FOR_DM16
+            else:
+                self._ca.unsubscribe(self._parse_dm16)
+                self.state = ResponseState.IDLE
+                self.sa = None
 
     def parse_dm14(
         self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray

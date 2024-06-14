@@ -125,6 +125,20 @@ request_write_no_seed_timeout = [
     (Feeder.MsgType.CANTX, 0x18D8F9D4, [0x01, 0x11, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], 0.0),  # DM15 proceed response
 ]
 
+read_with_seed_error = [
+    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0x07, 0x00], 0.0),  # DM14 read address 0x91000007
+    (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x11, 0xFF, 0xFF, 0xFF, 0xFF, 0x5A, 0xA5], 0.0),  # DM15 seed response
+    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x13, 0x03, 0x00, 0x00, 0x92, 0xA5, 0x5A], 0.0),  # DM14 key response
+    (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x1B, 0x01, 0x00, 0x00, 0x07, 0xFF, 0xFF], 0.0),  # DM15 error response
+]
+
+write_with_seed_error = [
+    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x15, 0x07, 0x00, 0x00, 0x91, 0x07, 0x00], 0.0),  # DM14 write address 0x91000007
+    (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x11, 0xFF, 0xFF, 0xFF, 0xFF, 0x5A, 0xA5], 0.0),  # DM15 seed response
+    (Feeder.MsgType.CANTX, 0x18D9D4F9, [0x01, 0x15, 0x07, 0x00, 0x00, 0x91, 0xA5, 0x5A], 0.0),  # DM14 key response
+    (Feeder.MsgType.CANRX, 0x18D8F9D4, [0x00, 0x1B, 0x01, 0x00, 0x00, 0x07, 0xFF, 0xFF], 0.0),  # DM15 error response
+]
+
 error_codes = [0x10, 0x11, 0x12, 0x100, 0x101, 0x1000, 0x1001, 0x100F, 0x10FE]
 # fmt: on
 
@@ -650,6 +664,47 @@ def test_dm14_write_error(feeder, error_code):
         dm14.write(0xD4, 1, 0x91000007, values, object_byte_size=4)
 
     assert j1939.ErrorInfo[error_code] in str(excinfo.value)
+
+    feeder.process_messages()
+
+
+def test_dm14_read_error_response(feeder):
+    """
+    Tests that the DM14 read query can react to errors correctly
+    :param feeder: can message feeder
+    """
+    with pytest.raises(RuntimeError) as excinfo:
+        feeder.can_messages = read_with_seed_error
+        feeder.pdus_from_messages()
+        ca = feeder.accept_all_messages(
+            device_address_preferred=0xF9, bypass_address_claim=True
+        )
+        dm14 = j1939.MemoryAccess(ca)
+        dm14.set_seed_key_algorithm(key_from_seed)
+        dm14.read(0xD4, 1, 0x92000003, 1)
+
+    assert j1939.ErrorInfo[0x1] in str(excinfo.value)
+
+    feeder.process_messages()
+
+
+def test_dm14_write_error_response(feeder):
+    """
+    Tests that the DM14 read query can react to errors correctly
+    :param feeder: can message feeder
+    """
+    with pytest.raises(RuntimeError) as excinfo:
+        feeder.can_messages = write_with_seed_error
+        feeder.pdus_from_messages()
+        ca = feeder.accept_all_messages(
+            device_address_preferred=0xF9, bypass_address_claim=True
+        )
+        dm14 = j1939.MemoryAccess(ca)
+        dm14.set_seed_key_algorithm(key_from_seed)
+        values = [0x11223344]
+        dm14.write(0xD4, 1, 0x91000007, values, object_byte_size=4)
+
+    assert j1939.ErrorInfo[0x1] in str(excinfo.value)
 
     feeder.process_messages()
 
