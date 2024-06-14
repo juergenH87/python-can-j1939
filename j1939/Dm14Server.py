@@ -43,54 +43,46 @@ class DM14Server:
         Determines whether to send data or wait to receive data based on the command type.
         If the command is a read command, then the data requested is sent.
         """
-        if self.command is j1939.Command.READ.value:
-            self._send_dm15(
-                self.length,
-                self.direct,
-                self.status,
-                self.state,
-                self.object_count,
-                self.sa,
-                j1939.ParameterGroupNumber.PGN.DM15,
-                self.error,
-                self.edcp,
-            )
-            if self.state == ResponseState.SEND_PROCEED:
-                self._send_dm16()
-                if (len(self.data)) <= 8:
-                    self.proceed = True
-                    self.state = ResponseState.SEND_OPERATION_COMPLETE
-                    self._ca.subscribe(self.parse_dm14)
-                    self._send_dm15(
-                        self.length,
-                        self.direct,
-                        self.status,
-                        self.state,
-                        self.object_count,
-                        self.sa,
-                    )
-            else:
-                self.state = ResponseState.IDLE
-                self.sa = None
+        self._ca.subscribe(self._parse_dm16)
+        self._send_dm15(
+            self.length,
+            self.direct,
+            self.status,
+            self.state,
+            self.object_count,
+            self.sa,
+            j1939.ParameterGroupNumber.PGN.DM15,
+            self.error,
+            self.edcp,
+        )
+
+        if (
+            self.command is j1939.Command.READ.value
+            and self.state == ResponseState.SEND_PROCEED
+        ):
+            self._ca.unsubscribe(self._parse_dm16)
+            self._send_dm16()
+            if (len(self.data)) <= 8:
+                self.proceed = True
+                self.state = ResponseState.SEND_OPERATION_COMPLETE
+                self._ca.subscribe(self.parse_dm14)
+                self._send_dm15(
+                    self.length,
+                    self.direct,
+                    self.status,
+                    self.state,
+                    self.object_count,
+                    self.sa,
+                )
+        elif (
+            self.command is j1939.Command.WRITE.value
+            and self.state == ResponseState.SEND_PROCEED
+        ):
+            self.state = ResponseState.WAIT_FOR_DM16
         else:
-            self._ca.subscribe(self._parse_dm16)
-            self._send_dm15(
-                self.length,
-                self.direct,
-                self.status,
-                self.state,
-                self.object_count,
-                self.sa,
-                j1939.ParameterGroupNumber.PGN.DM15,
-                self.error,
-                self.edcp,
-            )
-            if self.state == ResponseState.SEND_PROCEED:
-                self.state = ResponseState.WAIT_FOR_DM16
-            else:
-                self._ca.unsubscribe(self._parse_dm16)
-                self.state = ResponseState.IDLE
-                self.sa = None
+            self._ca.unsubscribe(self._parse_dm16)
+            self.state = ResponseState.IDLE
+            self.sa = None
 
     def parse_dm14(
         self, priority: int, pgn: int, sa: int, timestamp: int, data: bytearray
