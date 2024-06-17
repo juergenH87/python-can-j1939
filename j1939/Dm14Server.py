@@ -73,6 +73,9 @@ class DM14Server:
                     self.state,
                     self.object_count,
                     self.sa,
+                    j1939.ParameterGroupNumber.PGN.DM15,
+                    self.error,
+                    self.edcp,
                 )
         elif (
             self.command is j1939.Command.WRITE.value
