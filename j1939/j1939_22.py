@@ -2,7 +2,6 @@ from .parameter_group_number import ParameterGroupNumber
 from .message_id import MessageId, FrameFormat
 import logging
 import time
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
