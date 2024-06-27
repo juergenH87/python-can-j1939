@@ -268,7 +268,7 @@ class J1939_22:
             # get chunks from data
             list_of_arr, data_list = self.get_chunks(data, data_length)
             if len(list_of_arr) > 1:
-                data_list.append(list_of_arr[1].tolist())
+                data_list.append(list_of_arr[1])
 
             # if the PF is between 240 and 255, the message can only be broadcast
             if dest_address == ParameterGroupNumber.Address.GLOBAL:
