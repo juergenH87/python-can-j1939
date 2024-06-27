@@ -267,11 +267,7 @@ class J1939_22:
             if priority == None: priority = 7
 
             # get chunks from data
-            full_tp_size_packages = int(data_length/self.DataLength.TP)
-            arr = np.array(data)
-            list_of_arr = np.split(arr, [full_tp_size_packages*self.DataLength.TP])
-            arr = np.reshape(list_of_arr[0], (-1,self.DataLength.TP))
-            data_list = arr.tolist()
+            list_of_arr, data_list = self.get_chunks(data, data_length)
             if len(list_of_arr) > 1:
                 data_list.append(list_of_arr[1].tolist())
 
@@ -318,6 +314,13 @@ class J1939_22:
             self.__job_thread_wakeup()
 
         return True
+
+    def get_chunks(self, data, data_length):
+        full_tp_size_packages = int(data_length / self.DataLength.TP)
+        index = full_tp_size_packages * self.DataLength.TP
+        list_of_arr = [data[:index], data[index:]]
+        data_list = [list_of_arr[0][i : (i + min(self.DataLength.TP, len(list_of_arr[0]) - i))] for i in range(0, len(list_of_arr[0]), self.DataLength.TP)]
+        return list_of_arr, data_list
 
     def __send_multi_pg(self, frame_format, cpg_list, src_address, dst_address):
         # deadline reached
