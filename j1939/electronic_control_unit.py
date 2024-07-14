@@ -336,9 +336,6 @@ class ElectronicControlUnit:
                     # do nothing
                     pass
 
-        if system.startswith("win32") or system.startswith("cygwin"):
-            pythoncom.CoUninitialize()
-
     def _job_thread_wakeup(self):
         """Wakeup the async job thread
 
