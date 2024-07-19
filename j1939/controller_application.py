@@ -4,6 +4,7 @@ from .message_id import FrameFormat
 
 logger = logging.getLogger(__name__)
 
+
 class ControllerApplication:
     """ControllerApplication (CA) identified by a Name and an Address."""
 
@@ -55,6 +56,7 @@ class ControllerApplication:
         self._ecu = None
         self._subscribers_request = []
         self._subscribers_acknowledge = []
+        self._started = False
 
     def associate_ecu(self, ecu):
         """Binds this CA to the ECU given
@@ -62,7 +64,7 @@ class ControllerApplication:
             The ECU this CA should be bound to.
             A j1939 :class:`j1939.ElectronicControlUnit` instance
         """
-        self._ecu : j1939.ElectronicControlUnit
+        self._ecu: j1939.ElectronicControlUnit
         self._ecu = ecu
 
     def remove_ecu(self):
@@ -123,16 +125,17 @@ class ControllerApplication:
         self._ecu.remove_timer(callback)
 
     def start(self):
-        """Starts the CA
-        """
-        # TODO: how to determine if the CA is already started?
-        # raise RuntimeError("Can't start CA. Seems to be already running.")
-        self._ecu.add_timer(0.500, self._process_claim_async)
+        """Starts the CA"""
+        # TODO: raise RuntimeError("Can't start CA. Seems to be already running.")? or just ignore?
+        if not self.started:
+            self._started = True
+            self._ecu.add_timer(0.500, self._process_claim_async)
 
     def stop(self):
-        """Stops the CA
-        """
-        self._ecu.remove_timer(self._process_claim_async)
+        """Stops the CA"""
+        if self.started:
+            self._started = False
+            self._ecu.remove_timer(self._process_claim_async)
 
     def _process_claim_async(self, cookie):
         time_to_sleep = 0.500
@@ -140,7 +143,10 @@ class ControllerApplication:
             if self._device_address_preferred != None:
                 self._device_address_announced = self._device_address_preferred
                 self._send_address_claimed(self._device_address_announced)
-                if self._device_address_announced > 127 and self._device_address_announced < 248:
+                if (
+                    self._device_address_announced > 127
+                    and self._device_address_announced < 248
+                ):
                     self._device_address_state = ControllerApplication.State.WAIT_VETO
                     time_to_sleep = ControllerApplication.ClaimTimeout.VETO
                 else:
@@ -175,31 +181,52 @@ class ControllerApplication:
         logger.debug("Received ADDRESS CLAIMED message from source '%d'", src_address)
 
         # are we awaiting this address claimed message?
-        if (0
-            or (self._device_address_state == ControllerApplication.State.NORMAL and src_address == self._device_address)
-            or (self._device_address_state == ControllerApplication.State.WAIT_VETO and src_address == self._device_address_announced)
-            ):
+        if (
+            0
+            or (
+                self._device_address_state == ControllerApplication.State.NORMAL
+                and src_address == self._device_address
+            )
+            or (
+                self._device_address_state == ControllerApplication.State.WAIT_VETO
+                and src_address == self._device_address_announced
+            )
+        ):
 
-            logger.info("Received ADDRESS CLAIMED message with conflicting address '%d'", src_address)
+            logger.info(
+                "Received ADDRESS CLAIMED message with conflicting address '%d'",
+                src_address,
+            )
 
-            contenders_name = j1939.Name(bytes = data)
+            contenders_name = j1939.Name(bytes=data)
 
             if self._name.value > contenders_name.value:
                 # we have to release our address and claim another one
-                logger.info("We have to release our address '%d' because the contenders name is less than ours", src_address)
+                logger.info(
+                    "We have to release our address '%d' because the contenders name is less than ours",
+                    src_address,
+                )
                 # TODO: are there any state variables we have to care about?
                 self._device_address = j1939.ParameterGroupNumber.Address.NULL
                 # TODO: maybe we should call an overloadable function here
                 if self._name.arbitrary_address_capable == False:
                     # bad luck
-                    logger.error("After releasing our address we are configured to stop operation (CANNOT CLAIM)")
-                    self._device_address_state = ControllerApplication.State.CANNOT_CLAIM
+                    logger.error(
+                        "After releasing our address we are configured to stop operation (CANNOT CLAIM)"
+                    )
+                    self._device_address_state = (
+                        ControllerApplication.State.CANNOT_CLAIM
+                    )
                     self._device_address = None
-                    self._send_address_claimed(j1939.ParameterGroupNumber.Address.NULL) # send CANNOT CLAIM
+                    self._send_address_claimed(
+                        j1939.ParameterGroupNumber.Address.NULL
+                    )  # send CANNOT CLAIM
                 else:
                     # TODO: we should check the address range here
                     self._device_address_announced += 1
-                    logger.info("Try the next address '%d'", self._device_address_announced)
+                    logger.info(
+                        "Try the next address '%d'", self._device_address_announced
+                    )
                     self._send_address_claimed(self._device_address_announced)
                     # TODO: it's not possible to set the VETO-Timeout from here
                     self._device_address_state = ControllerApplication.State.WAIT_VETO
@@ -228,14 +255,17 @@ class ControllerApplication:
         pgn = data[0] | (data[1] << 8) | (data[2] << 16)
         src_address = mid.source_address
 
-        if (self.state != ControllerApplication.State.NORMAL) or ((self._device_address != dest_address) and (dest_address != j1939.ParameterGroupNumber.Address.GLOBAL)):
+        if (self.state != ControllerApplication.State.NORMAL) or (
+            (self._device_address != dest_address)
+            and (dest_address != j1939.ParameterGroupNumber.Address.GLOBAL)
+        ):
             # only answer if
             # - we have a valid address and
             # - the destination_addr is ours OR the destination_addr is the GLOBAL one
             return
 
         # special case j1939.ParameterGroupNumber.PGN.ADDRESSCLAIM
-        if pgn==j1939.ParameterGroupNumber.PGN.ADDRESSCLAIM:
+        if pgn == j1939.ParameterGroupNumber.PGN.ADDRESSCLAIM:
             # answer the request with our name...
             self._send_address_claimed(self._device_address)
         else:
@@ -244,12 +274,27 @@ class ControllerApplication:
 
     def send_message(self, priority, parameter_group_number, data):
         if self.state != ControllerApplication.State.NORMAL:
-            raise RuntimeError("Could not send message unless address claiming has finished")
+            raise RuntimeError(
+                "Could not send message unless address claiming has finished"
+            )
 
-        mid = j1939.MessageId(priority=priority, parameter_group_number=parameter_group_number, source_address=self._device_address)
+        mid = j1939.MessageId(
+            priority=priority,
+            parameter_group_number=parameter_group_number,
+            source_address=self._device_address,
+        )
         self._ecu.send_message(mid.can_id, True, data)
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data, time_limit=0, frame_format=FrameFormat.FEFF):
+    def send_pgn(
+        self,
+        data_page,
+        pdu_format,
+        pdu_specific,
+        priority,
+        data,
+        time_limit=0,
+        frame_format=FrameFormat.FEFF,
+    ):
         """send a pgn
         :param int data_page: data page
         :param int pdu_format: pdu format
@@ -261,9 +306,20 @@ class ControllerApplication:
         0 or no time-limit means immediate sending.
         """
         if self.state != ControllerApplication.State.NORMAL:
-            raise RuntimeError("Could not send message unless address claiming has finished")
+            raise RuntimeError(
+                "Could not send message unless address claiming has finished"
+            )
 
-        return self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data, time_limit, frame_format)
+        return self._ecu.send_pgn(
+            data_page,
+            pdu_format,
+            pdu_specific,
+            priority,
+            self._device_address,
+            data,
+            time_limit,
+            frame_format,
+        )
 
     def send_request(self, data_page, pgn, destination):
         """send a request message
@@ -273,20 +329,33 @@ class ControllerApplication:
         """
         if self.state != ControllerApplication.State.NORMAL:
             if pgn != j1939.ParameterGroupNumber.PGN.ADDRESSCLAIM:
-                raise RuntimeError("Could not send request message unless address claiming has finished")
+                raise RuntimeError(
+                    "Could not send request message unless address claiming has finished"
+                )
             source_address = j1939.ParameterGroupNumber.Address.NULL
         else:
             source_address = self._device_address
 
         data = [(pgn & 0xFF), ((pgn >> 8) & 0xFF), ((pgn >> 16) & 0xFF)]
-        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, source_address, data)
+        self._ecu.send_pgn(
+            data_page,
+            (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF,
+            destination & 0xFF,
+            6,
+            source_address,
+            data,
+        )
 
     def _send_address_claimed(self, address):
         # TODO: Normally the (initial) address claimed message must not be an auto repeat message.
         #       We have to use a single-shot message instead!
         #       After a (send-)error occurs we have to wait 0..153 msec before repeating.
-        pgn = j1939.ParameterGroupNumber(0, 238, j1939.ParameterGroupNumber.Address.GLOBAL)
-        mid = j1939.MessageId(priority=6, parameter_group_number=pgn.value, source_address=address)
+        pgn = j1939.ParameterGroupNumber(
+            0, 238, j1939.ParameterGroupNumber.Address.GLOBAL
+        )
+        mid = j1939.MessageId(
+            priority=6, parameter_group_number=pgn.value, source_address=address
+        )
         data = self._name.bytes
         self._ecu.send_message(mid.can_id, True, data)
 
@@ -309,7 +378,7 @@ class ControllerApplication:
             return False
         if dest_address == j1939.ParameterGroupNumber.Address.GLOBAL:
             return True
-        return (self.device_address == dest_address)
+        return self.device_address == dest_address
 
     @property
     def state(self):
@@ -320,3 +389,10 @@ class ControllerApplication:
         if self.state != j1939.ControllerApplication.State.NORMAL:
             return j1939.ParameterGroupNumber.Address.NULL
         return self._device_address
+
+    @property
+    def started(self) -> bool:
+        """
+        Getter for the started attrribute
+        """
+        return self._started
