@@ -331,4 +331,3 @@ class ControllerApplication:
         Getter for the started property
         """
         return self._started
-    
