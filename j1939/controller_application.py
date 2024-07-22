@@ -127,14 +127,16 @@ class ControllerApplication:
         """Starts the CA
         """
         # TODO raise RuntimeError("Can't start CA. Seems to be already running.")? or just ignore?
-        if not self.started:
+        # check if we are not already started and there is an ecu connected
+        if self._ecu and not self.started:
             self._started = True
             self._ecu.add_timer(0.500, self._process_claim_async)
 
     def stop(self):
         """Stops the CA
         """
-        if self.started:
+        # check if we are already started and there is an ecu connected
+        if self._ecu and self.started:
             self._started = False
             self._ecu.remove_timer(self._process_claim_async)
 
