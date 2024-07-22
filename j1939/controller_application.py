@@ -55,6 +55,7 @@ class ControllerApplication:
         self._ecu = None
         self._subscribers_request = []
         self._subscribers_acknowledge = []
+        self._started = False
 
     def associate_ecu(self, ecu):
         """Binds this CA to the ECU given
@@ -125,14 +126,17 @@ class ControllerApplication:
     def start(self):
         """Starts the CA
         """
-        # TODO: how to determine if the CA is already started?
-        # raise RuntimeError("Can't start CA. Seems to be already running.")
-        self._ecu.add_timer(0.500, self._process_claim_async)
+        # TODO raise RuntimeError("Can't start CA. Seems to be already running.")? or just ignore?
+        if not self.started:
+            self._started = True
+            self._ecu.add_timer(0.500, self._process_claim_async)
 
     def stop(self):
         """Stops the CA
         """
-        self._ecu.remove_timer(self._process_claim_async)
+        if self.started:
+            self._started = False
+            self._ecu.remove_timer(self._process_claim_async)
 
     def _process_claim_async(self, cookie):
         time_to_sleep = 0.500
@@ -320,3 +324,10 @@ class ControllerApplication:
         if self.state != j1939.ControllerApplication.State.NORMAL:
             return j1939.ParameterGroupNumber.Address.NULL
         return self._device_address
+    
+    @property
+    def started(self) -> bool:
+        """
+        Getter for the started property
+        """
+        return self._started
