@@ -213,6 +213,7 @@ class Dm14Query:
         object_byte_size: int = 1,
         signed: bool = False,
         return_raw_bytes: bool = False,
+        max_timeout: int = 1,
     ) -> list:
         """
         Send a read query to dest_address, requesting data at address
@@ -223,6 +224,7 @@ class Dm14Query:
         :param int object_byte_size: size of each object in bytes
         :param bool signed: whether the data is signed
         :param bool return_raw_bytes: whether to return raw bytes or values
+        :param int max_timeout: max timeout for transaction
         """
         assert object_count > 0
         self._dest_address = dest_address
@@ -255,6 +257,7 @@ class Dm14Query:
         address: int,
         values: list,
         object_byte_size: int = 1,
+        max_timeout: int = 1,
     ) -> None:
         """
         Send a write query to dest_address, requesting to write values at address
@@ -263,6 +266,7 @@ class Dm14Query:
         :param int address: address of the message
         :param list values: values to be written
         :param int object_byte_size: size of each object in bytes
+        :param int max_timeout: max timeout for transaction
         """
         self._dest_address = dest_address
         self.direct = direct
@@ -276,7 +280,7 @@ class Dm14Query:
         self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
         try:
-            self.data_queue.get(block=True, timeout=1)
+            self.data_queue.get(block=True, timeout=max_timeout)
             for _ in range(self.exception_queue.qsize()):
                 raise self.exception_queue.get(block=False, timeout=1)
         except queue.Empty:

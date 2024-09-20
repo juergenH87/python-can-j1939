@@ -128,7 +128,12 @@ class MemoryAccess:
                     pass
 
     def respond(
-        self, proceed: bool, data: list = None, error: int = 0xFFFFFF, edcp: int = 0xFF
+        self,
+        proceed: bool,
+        data: list = None,
+        error: int = 0xFFFFFF,
+        edcp: int = 0xFF,
+        max_timeout: int = 3,
     ) -> list:
         """
         Responds with requested data and error code, if applicable, to a read request
@@ -136,13 +141,14 @@ class MemoryAccess:
         :param list data: data to be sent to device
         :param int error: error code to be sent to device
         :param int edcp: value for edcp extension
+        :param int max_timeout: max timeout for transaction
         """
         if data is None:
             data = []
         if self.state is DMState.WAIT_RESPONSE:
             self._ca.unsubscribe(self._listen_for_dm14)
             self.state = DMState.IDLE
-            return_data = self.server.respond(proceed, data, error, edcp)
+            return_data = self.server.respond(proceed, data, error, edcp, max_timeout)
             self._ca.subscribe(self._listen_for_dm14)
             return return_data
         else:
@@ -157,6 +163,7 @@ class MemoryAccess:
         object_byte_size: int = 1,
         signed: bool = False,
         return_raw_bytes: bool = False,
+        max_timeout: int = 1,
     ) -> list:
         """
         Make a dm14 read Query
@@ -167,6 +174,7 @@ class MemoryAccess:
         :param int object_byte_size: size of each object in bytes
         :param bool signed: whether the data is signed
         :param bool return_raw_bytes: whether to return raw bytes or values
+        :param int max_timeout: max timeout for transaction
         """
         if self.state == DMState.IDLE:
             self.state = DMState.WAIT_QUERY
@@ -179,6 +187,7 @@ class MemoryAccess:
                 object_byte_size,
                 signed,
                 return_raw_bytes,
+                max_timeout,
             )
             self.state = DMState.IDLE
             return data
@@ -192,6 +201,7 @@ class MemoryAccess:
         address: int,
         values: list,
         object_byte_size: int = 1,
+        max_timeout: int = 1,
     ) -> None:
         """
         Send a write query to dest_address, requesting to write values at address
@@ -200,11 +210,14 @@ class MemoryAccess:
         :param int address: address of the message
         :param list values: values to be written
         :param int object_byte_size: size of each object in bytes
+        :param int max_timeout: max timeout for transaction
         """
         if self.state == DMState.IDLE:
             self.state = DMState.WAIT_QUERY
             self.address = dest_address
-            self.query.write(dest_address, direct, address, values, object_byte_size)
+            self.query.write(
+                dest_address, direct, address, values, object_byte_size, max_timeout
+            )
             self.state = DMState.IDLE
 
     def set_seed_generator(self, seed_generator: callable) -> None:

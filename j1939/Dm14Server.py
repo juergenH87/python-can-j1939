@@ -340,6 +340,7 @@ class DM14Server:
         data=None,
         error: int = 0xFFFFFF,
         edcp: int = 0xFF,
+        max_timeout: int = 3,
     ) -> list:
         """
         Respond to DM14 query with the requested data or confimation of operation is good to proceed
@@ -347,6 +348,7 @@ class DM14Server:
         :param list data: data to be sent to device
         :param int error: error code to be sent to device
         :param int edcp: value for edcp extension
+        :param int max_timeout: max time for transaction
         """
         if data is None:
             data = []
@@ -366,5 +368,5 @@ class DM14Server:
         self._wait_for_data()
         mem_data = None
         if self.state == ResponseState.WAIT_FOR_DM16:
-            mem_data = self.data_queue.get(block=True, timeout=3)
+            mem_data = self.data_queue.get(block=True, timeout=max_timeout)
         return mem_data
