@@ -239,9 +239,15 @@ class Dm14Query:
         self._send_dm14(7)
         self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
-        raw_bytes = self.data_queue.get(block=True, timeout=1)
+        raw_bytes = None
+        try:
+            raw_bytes = self.data_queue.get(block=True, timeout=max_timeout)
+        except queue.Empty:
+            if self.state is QueryState.WAIT_FOR_SEED:
+                raise RuntimeError("No response from server")
+            pass
         for _ in range(self.exception_queue.qsize()):
-            raise self.exception_queue.get(block=False, timeout=1)
+            raise self.exception_queue.get(block=False, timeout=max_timeout)
         if raw_bytes:
             if self.return_raw_bytes:
                 return raw_bytes
@@ -282,7 +288,7 @@ class Dm14Query:
         try:
             self.data_queue.get(block=True, timeout=max_timeout)
             for _ in range(self.exception_queue.qsize()):
-                raise self.exception_queue.get(block=False, timeout=1)
+                raise self.exception_queue.get(block=False, timeout=max_timeout)
         except queue.Empty:
             if self.state is QueryState.WAIT_FOR_SEED:
                 raise RuntimeError("No response from server")

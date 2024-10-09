@@ -575,7 +575,7 @@ def test_dm14_read_timeout_error(feeder):
     Tests that the DM14 read query can react to timeout errors correctly
     :param feeder: can message feeder
     """
-    with pytest.raises(queue.Empty) as excinfo:
+    with pytest.raises(RuntimeError) as excinfo:
         feeder.can_messages = [
             (
                 Feeder.MsgType.CANTX,
