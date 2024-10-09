@@ -288,7 +288,7 @@ class Dm14Query:
         try:
             self.data_queue.get(block=True, timeout=max_timeout)
             for _ in range(self.exception_queue.qsize()):
-                raise self.exception_queue.get(block=False, timeout=1)
+                raise self.exception_queue.get(block=False, timeout=max_timeout)
         except queue.Empty:
             if self.state is QueryState.WAIT_FOR_SEED:
                 raise RuntimeError("No response from server")
