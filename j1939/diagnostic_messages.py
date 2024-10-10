@@ -235,6 +235,14 @@ class Dm1:
             self._data.append((dtc >> 16) & 0xFF)
             self._data.append((dtc >> 24) & 0xFF)
 
+        # no dtcs to report
+        if len(self._data) == 2:
+            self._data.extend([0x00, 0x00, 0x00, 0x00, 0xff, 0xff])
+        # one dtc to report
+        elif len(self._data) == 6:
+            self._data.extend([0xff, 0xff])
+
+
         # Default Priority: 6
         # priority should be 7 when transport protocol is used (SAE J1939-21 requirement)
         if len(self._data) > 8:
