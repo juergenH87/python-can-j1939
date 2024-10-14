@@ -123,7 +123,6 @@ class MemoryAccess:
                 self.server.set_busy(True)
                 self.server.parse_dm14(priority, pgn, sa, timestamp, data)
                 self.server.set_busy(False)
-
             else:
                 pass
 

@@ -194,22 +194,22 @@ class DM14Server:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM15
         data = [0xFF] * length
         data[1] = (direct << 4) + (status << 1) + 1
-        if state == ResponseState.WAIT_FOR_KEY:
+        if self.state == ResponseState.WAIT_FOR_KEY:
             self.seed = self._seed_generator()
             data[0] = 0x00
             data[length - 2] = self.seed & 0xFF
             data[length - 1] = self.seed >> 8
 
-        elif state == ResponseState.SEND_PROCEED:
+        elif self.state == ResponseState.SEND_PROCEED:
             data[0] = object_count
 
-        elif state == ResponseState.SEND_OPERATION_COMPLETE:
+        elif self.state == ResponseState.SEND_OPERATION_COMPLETE:
             self.command = j1939.Command.OPERATION_COMPLETED.value
             data[0] = 0x00
             data[1] = (direct << 4) + (self.command << 1) + 1
             self.state = ResponseState.WAIT_OPERATION_COMPLETE
 
-        elif state == ResponseState.SEND_ERROR:
+        elif self.state == ResponseState.SEND_ERROR:
             status = j1939.Dm15Status.OPERATION_FAILED.value
             data[0] = 0x00
             data[1] = (direct << 4) + (status << 1) + 1
