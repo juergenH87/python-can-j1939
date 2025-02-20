@@ -226,7 +226,7 @@ class ElectronicControlUnit:
             self._notifier.remove_listener(listener)
         self._notifier = None
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF, tp_connection_mode=J1939_21.ConnectionMode.ABORT):
         """send a pgn
         :param int data_page: data page
         :param int pdu_format: pdu format
@@ -238,7 +238,7 @@ class ElectronicControlUnit:
         after this time, the multi-pg will be sent. several pgs can thus be combined in one multi-pg.
         0 or no time-limit means immediate sending.
         """
-        return self.j1939_dll.send_pgn(data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format)
+        return self.j1939_dll.send_pgn(data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format, tp_connection_mode)
 
     def send_message(self, can_id, extended_id, data, fd_format=False):
         """Send a raw CAN message to the bus.
