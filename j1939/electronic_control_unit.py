@@ -268,7 +268,7 @@ class ElectronicControlUnit:
                           )
             try:
                 self._bus.send(msg)
-            except can.CanOperationError:
+            except can.CanError as e:
                 logger.error(f'not able to send message because {e}')
 
     def notify(self, can_id, data, timestamp):
