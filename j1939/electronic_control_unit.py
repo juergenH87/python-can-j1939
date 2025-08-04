@@ -266,9 +266,10 @@ class ElectronicControlUnit:
                           is_fd=fd_format,
                           bitrate_switch=fd_format
                           )
-        with self._send_lock:
-            self._bus.send(msg)
-        # TODO: check error receivement
+            try:
+                self._bus.send(msg)
+            except can.CanOperationError:
+                logger.info('not able to send message because CAN has not free Buffer space')
 
     def notify(self, can_id, data, timestamp):
         """Feed incoming CAN message into this ecu.
