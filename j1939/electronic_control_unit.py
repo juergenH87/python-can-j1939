@@ -269,7 +269,7 @@ class ElectronicControlUnit:
             try:
                 self._bus.send(msg)
             except can.CanOperationError:
-                logger.info('not able to send message because CAN has not free Buffer space')
+                logger.error('not able to send message because CAN has not free Buffer space')
 
     def notify(self, can_id, data, timestamp):
         """Feed incoming CAN message into this ecu.
