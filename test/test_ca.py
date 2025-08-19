@@ -62,6 +62,18 @@ def test_addr_claim_fixed_veto_lose(feeder):
 
     address_claim(feeder, expected_state=j1939.ControllerApplication.State.CANNOT_CLAIM)
 
+def test_addr_claim_fixed_duplicate_response(feeder):
+    """Test CA Address claim on the bus and a duplicate response is received from a device with 
+    the same name
+    """
+    feeder.can_messages = [
+        (Feeder.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
+        (Feeder.MsgType.CANRX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Response from Counterpart with same name
+    ]
+
+    address_claim(feeder)
+
+
 def test_addr_claim_fixed_veto_win(feeder):
     """Test CA Address claim on the bus with fixed address and a veto counterpart
     This test runs a "Single Address Capable" claim procedure with a fixed
