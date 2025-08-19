@@ -30,7 +30,7 @@ class Feeder:
     Simulated/mocked CAN message feeder for tests.  Tests can use this class to specify
     expected rx and tx messages via Feeder.can_messages.  Overrides
     j1939.ElectronicControlUnit.send_message, checking that tx message data matches
-    expected data, and then injecting the expected rx nessage into the ECU
+    expected data, and then injecting the expected rx message into the ECU
     """
 
     class MsgType(object):
@@ -45,7 +45,7 @@ class Feeder:
         self.message_thread = threading.Thread(target=self._async_can_feeder)
         self.message_thread.start()
         # redirect the send_message from the can bus to our simulation
-        self.ecu = j1939.ElectronicControlUnit(send_message=self._send_message)
+        self.ecu = j1939.ElectronicControlUnit(max_cmdt_packets=255, send_message=self._send_message)
 
     def _async_can_feeder(self):
         """Asynchronous feeder"""

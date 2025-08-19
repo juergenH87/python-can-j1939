@@ -50,8 +50,8 @@ class Dm14Query:
         """
         assert self.state is QueryState.WAIT_FOR_SEED
         if self.command is Command.WRITE:
-            self._send_dm16()
             self.state = QueryState.WAIT_FOR_OPER_COMPLETE
+            self._send_dm16()
         else:
             self.state = QueryState.WAIT_FOR_DM16
             self._ca.unsubscribe(self._parse_dm15)
@@ -75,9 +75,9 @@ class Dm14Query:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM14
         pointer = self.address.to_bytes(length=4, byteorder="little")
         data = []
-        data.append(self.object_count)
+        data.append(self.object_count & 0xFF)
         data.append(
-            (self.direct << 4) + (self.command.value << 1) + 1
+            ((self.object_count >> 3) & 0xE0) + (self.direct << 4) + (self.command.value << 1) + 1
         )  # (SAE reserved = 1)
         for octet in pointer:
             data.append(octet)
@@ -95,8 +95,7 @@ class Dm14Query:
         data = []
         byte_count = len(self.bytes)
         data.append(0xFF if byte_count > 7 else byte_count)
-        for i in range(byte_count):
-            data.append(self.bytes[i])
+        data.extend(self.bytes)
         self._ca.send_pgn(
             0, (self._pgn >> 8) & 0xFF, self._dest_address & 0xFF, 6, data
         )
@@ -114,7 +113,6 @@ class Dm14Query:
         """
         if pgn != j1939.ParameterGroupNumber.PGN.DM15 or sa != self._dest_address:
             return
-        seed = (data[7] << 8) + data[6]
         status = (data[1] >> 1) & 7
         if (
             status is Dm15Status.BUSY.value
@@ -137,14 +135,15 @@ class Dm14Query:
                         )
                     )
         else:
-            length = data[0]
+            seed = (data[7] << 8) + data[6]
+            length = data[0] + ((data[1] & 0xE0) << 3)
             if seed == 0xFFFF and length == self.object_count:
                 self._wait_for_data()
             else:
                 if self.state is QueryState.WAIT_FOR_OPER_COMPLETE:
                     assert status is Command.OPERATION_COMPLETED.value
-                    self._send_operation_complete()
                     self.state = QueryState.IDLE
+                    self._send_operation_complete()
                     self.data_queue.put(self.mem_data)
                 else:
                     assert self.state is QueryState.WAIT_FOR_SEED
@@ -171,8 +170,10 @@ class Dm14Query:
         """
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self._dest_address:
             return
-        length = min(data[0], len(data) - 1)
-        # assert object_count == self.object_count
+        if data[0] == 0xFF:
+            length = len(data) - 1
+        else:
+            length = min(data[0], 7)
         self.mem_data = data[1 : length + 1]
         self._ca.unsubscribe(self._parse_dm16)
         self._ca.subscribe(self._parse_dm15)
@@ -194,10 +195,10 @@ class Dm14Query:
         :param bytearray raw_bytes: bytes received from device
         """
         values = []
-        for i in range(len(raw_bytes) // self.object_byte_size):
+        for i in range(0, len(raw_bytes), self.object_byte_size):
             values.append(
                 int.from_bytes(
-                    raw_bytes[i : self.object_byte_size],
+                    raw_bytes[i : i + self.object_byte_size],
                     byteorder="little",
                     signed=self.signed,
                 )
@@ -227,6 +228,7 @@ class Dm14Query:
         :param int max_timeout: max timeout for transaction
         """
         assert object_count > 0
+        assert object_count <= 1784
         self._dest_address = dest_address
         self.direct = direct
         self.address = address
@@ -235,9 +237,9 @@ class Dm14Query:
         self.signed = signed
         self.return_raw_bytes = return_raw_bytes
         self.command = Command.READ
+        self.state = QueryState.WAIT_FOR_SEED
         self._ca.subscribe(self._parse_dm15)
         self._send_dm14(7)
-        self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
         raw_bytes = None
         try:
@@ -281,9 +283,10 @@ class Dm14Query:
         self.command = Command.WRITE
         self.bytes = self._values_to_bytes(values)
         self.object_count = len(values)
+        assert self.object_count <= 1784
+        self.state = QueryState.WAIT_FOR_SEED
         self._ca.subscribe(self._parse_dm15)
         self._send_dm14(7)
-        self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
         try:
             self.data_queue.get(block=True, timeout=max_timeout)

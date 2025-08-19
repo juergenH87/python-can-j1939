@@ -62,7 +62,7 @@ class DM14Server:
         ):
             self._ca.unsubscribe(self._parse_dm16)
             self._send_dm16()
-            if (len(self.data)) <= 8:
+            if (len(self.data)) <= 7:
                 self.proceed = True
                 self.state = ResponseState.SEND_OPERATION_COMPLETE
                 self._ca.subscribe(self.parse_dm14)
@@ -77,6 +77,8 @@ class DM14Server:
                     self.error,
                     self.edcp,
                 )
+            else:
+                self.state = ResponseState.WAIT_FOR_DM16
         elif (
             self.command is j1939.Command.WRITE.value
             and self.state == ResponseState.SEND_PROCEED
@@ -100,6 +102,7 @@ class DM14Server:
         """
         if pgn != j1939.ParameterGroupNumber.PGN.DM14:
             return
+
         if (
             (self.sa is not None and sa != self.sa)
             or (
@@ -109,10 +112,10 @@ class DM14Server:
         ):
             self._send_dm15(
                 self.length,
-                data[1] >> 4,
+                (data[1] >> 4) & 0x1,
                 j1939.Dm15Status.OPERATION_FAILED.value,
                 j1939.ResponseState.SEND_ERROR,
-                data[0],
+                data[0] + ((data[1] & 0xE0) << 3),
                 sa,
                 j1939.ParameterGroupNumber.PGN.DM15,
                 self.error if self.error != 0x00 else 0x2,
@@ -122,7 +125,7 @@ class DM14Server:
             return
 
         self.length = len(data)
-        self.direct = data[1] >> 4
+        self.direct = (data[1] >> 4) & 0x1
 
         match self.state:
             case ResponseState.IDLE:
@@ -130,10 +133,9 @@ class DM14Server:
                 self.sa = sa
                 self.status = j1939.Dm15Status.PROCEED.value
                 self.address = data[2 : (self.length - 2)]
-                self.direct = data[1] >> 4
                 self.command = ((data[1] - 1) & 0x0F) >> 1
                 self.pointer_type = (data[1] >> 4) & 0x1
-                self.object_count = data[0]
+                self.object_count = data[0] + ((data[1] & 0xE0) << 3)
                 self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
                 self.data = data
                 if self._key_from_seed is not None:
@@ -154,15 +156,15 @@ class DM14Server:
                 self.length = len(data)
                 self.address = data[2 : (self.length - 2)]
                 self.command = ((data[1] - 1) & 0x0F) >> 1
-                self.object_count = data[0]
+                self.object_count = data[0] + ((data[1] & 0xE0) << 3)
                 self.key = (data[self.length - 1] << 8) + data[self.length - 2]
                 self.data = data
                 self.state = ResponseState.SEND_PROCEED
 
             case ResponseState.WAIT_OPERATION_COMPLETE:
-                self.state = ResponseState.IDLE
-                self.sa = None
                 self._ca.unsubscribe(self.parse_dm14)
+                self.sa = None
+                self.state = ResponseState.IDLE
 
             case _:
                 raise ValueError("Invalid state")
@@ -203,7 +205,8 @@ class DM14Server:
                 data[length - 1] = self.seed >> 8
 
             case ResponseState.SEND_PROCEED:
-                data[0] = object_count
+                data[0] = object_count & 0xFF
+                data[1] += (object_count & 0x300) >> 3
 
             case ResponseState.SEND_OPERATION_COMPLETE:
                 self.command = j1939.Command.OPERATION_COMPLETED.value
@@ -231,12 +234,11 @@ class DM14Server:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM16
         data = []
         byte_count = len(self.data)
-        data.append(0xFF if byte_count > 7 else byte_count)
-        for i in range((byte_count)):
-            data.append(self.data[i])
 
+        data.append(0xFF if byte_count > 7 else byte_count)
+        data.extend(self.data)
         data.extend([0xFF] * (self.length - byte_count - 1))
-        if byte_count > 8:
+        if byte_count > 7:
             self._ca.subscribe(self._parse_dm16)
         self._ca.send_pgn(0, (self._pgn >> 8) & 0xFF, self.sa & 0xFF, 7, data)
 
@@ -255,7 +257,10 @@ class DM14Server:
         if pgn != j1939.ParameterGroupNumber.PGN.DM16 or sa != self.sa:
             return
 
-        length = min(data[0], len(data) - 1)
+        if data[0] == 0xFF:
+            length = len(data) - 1
+        else:
+            length = min(data[0], 7)
         self.data_queue.put(data[1 : length + 1])
         self._ca.unsubscribe(self._parse_dm16)
         self._ca.subscribe(self.parse_dm14)
