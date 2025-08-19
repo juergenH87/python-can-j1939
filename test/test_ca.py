@@ -91,3 +91,51 @@ def test_addr_claim_arbitrary_veto_lose(feeder):
 
     address_claim(feeder, arbitrary_address_capable=1)
 
+def test_start_method(feeder):
+    """Test CA start method"""
+    name = j1939.Name(
+        arbitrary_address_capable=0,
+        industry_group=j1939.Name.IndustryGroup.Industrial,
+        vehicle_system_instance=2,
+        vehicle_system=127,
+        function=201,
+        function_instance=16,
+        ecu_instance=2,
+        manufacturer_code=666,
+        identity_number=1234567,
+    )
+    # create new CA on the bus with given NAME and ADDRESS
+    new_ca = j1939.ControllerApplication(name=name, device_address_preferred=128)
+    # by starting the CA it announces the given ADDRESS on the bus
+    new_ca.start()
+    assert not new_ca.started
+    # add ecu to the ca
+    new_ca.associate_ecu(feeder.ecu)
+    new_ca.start()
+    assert new_ca.started
+
+def test_stop_method(feeder):
+    """Test CA stop method"""
+    name = j1939.Name(
+        arbitrary_address_capable=0,
+        industry_group=j1939.Name.IndustryGroup.Industrial,
+        vehicle_system_instance=2,
+        vehicle_system=127,
+        function=201,
+        function_instance=16,
+        ecu_instance=2,
+        manufacturer_code=666,
+        identity_number=1234567,
+    )
+    # create new CA on the bus with given NAME and ADDRESS
+    new_ca = j1939.ControllerApplication(name=name, device_address_preferred=128)
+    # by starting the CA it announces the given ADDRESS on the bus
+    new_ca.stop()
+    assert not new_ca.started
+    # add ecu to the ca
+
+    new_ca.associate_ecu(feeder.ecu)
+    new_ca.start()
+    assert new_ca.started
+    new_ca.stop()
+    assert not new_ca.started
