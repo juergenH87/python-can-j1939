@@ -190,6 +190,10 @@ class ControllerApplication:
 
             contenders_name = j1939.Name(bytes = data)
 
+            if self._name.value == contenders_name.value:
+                # both have the same name - this could mean that we are the device or there is a duplicate
+                return
+            
             if self._name.value > contenders_name.value:
                 # we have to release our address and claim another one
                 logger.info("We have to release our address '%d' because the contenders name is less than ours", src_address)
