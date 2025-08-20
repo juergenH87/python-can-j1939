@@ -44,7 +44,7 @@ class ControllerApplication:
         """
         self._name = name
         self._device_address_preferred = device_address_preferred
-        if bypass_address_claim and device_address_preferred:
+        if bypass_address_claim and (device_address_preferred is not None):
             self._device_address_announced = device_address_preferred
             self._device_address = device_address_preferred
             self._device_address_state = ControllerApplication.State.NORMAL
