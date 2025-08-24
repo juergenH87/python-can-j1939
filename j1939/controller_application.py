@@ -1,6 +1,7 @@
 import logging
 import j1939
 from .message_id import FrameFormat
+from .j1939_21 import J1939_21
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +260,7 @@ class ControllerApplication:
         mid = j1939.MessageId(priority=priority, parameter_group_number=parameter_group_number, source_address=self._device_address)
         self._ecu.send_message(mid.can_id, True, data)
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data, time_limit=0, frame_format=FrameFormat.FEFF):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data, time_limit=0, frame_format=FrameFormat.FEFF, tp_connection_mode=J1939_21.ConnectionMode.ABORT):
         """send a pgn
         :param int data_page: data page
         :param int pdu_format: pdu format
@@ -269,11 +270,15 @@ class ControllerApplication:
         :param time_limit: option j1939-22 multi-pg: specify a time limit in s (e.g. 0.1 == 100ms),
         after this time, the multi-pg will be sent. several pgs can thus be combined in one multi-pg.
         0 or no time-limit means immediate sending.
+        :param tp_connection_mode: optional to j1939-21. specify a TP method to be used. If it's left to the default value,
+        then TP messages will be chosen between BAM or RTS/CTS based on following criteria:
+            # if the PF is between 0 and 239, the message is destination dependent when pdu_specific != 255
+            # if the PF is between 240 and 255, the message can only be broadcast
         """
         if self.state != ControllerApplication.State.NORMAL:
             raise RuntimeError("Could not send message unless address claiming has finished")
 
-        return self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data, time_limit, frame_format)
+        return self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data, time_limit, frame_format, tp_connection_mode)
 
     def send_request(self, data_page, pgn, destination):
         """send a request message

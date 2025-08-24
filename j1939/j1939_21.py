@@ -89,7 +89,7 @@ class J1939_21:
         """
         return ((src_address & 0xFF) << 8) | (dest_address & 0xFF)
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format, tp_connection_mode):
         pgn = ParameterGroupNumber(data_page, pdu_format, pdu_specific)
         if len(data) <= 8:
             # send normal message
@@ -112,8 +112,8 @@ class J1939_21:
             message_size = len(data)
             num_packets = int(message_size / 7) if (message_size % 7 == 0) else int(message_size / 7) + 1
 
-            # if the PF is between 240 and 255, the message can only be broadcast
-            if dest_address == ParameterGroupNumber.Address.GLOBAL:
+            # if the PF is between 240 and 255 or users choose to use BAM, send message with broadcast
+            if dest_address == ParameterGroupNumber.Address.GLOBAL or tp_connection_mode == self.ConnectionMode.BAM:
                 # send BAM
                 self.__send_tp_bam(src_address, priority, pgn.value, message_size, num_packets)
 
@@ -130,7 +130,12 @@ class J1939_21:
                         'dest_address' : ParameterGroupNumber.Address.GLOBAL,
                         'next_packet_to_send' : 0,
                     }
-            else:
+                
+                # Since we want to send the BAM to a target address
+                if tp_connection_mode == self.ConnectionMode.BAM:
+                    self._snd_buffer[buffer_hash]['dest_address'] = pdu_specific
+                
+            elif dest_address != ParameterGroupNumber.Address.GLOBAL or tp_connection_mode in [self.ConnectionMode.RTS, self.ConnectionMode.CTS]:
                 # send RTS/CTS
                 pgn.pdu_specific = 0  # this is 0 for peer-to-peer transfer
                 # init new buffer for this connection
