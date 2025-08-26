@@ -47,6 +47,36 @@ def test_addr_claim_fixed(feeder):
 
     address_claim(feeder)
 
+def test_addr_claim_fixed_reduced_time(feeder):
+    """Test CA Address claim on the bus with fixed address
+    This test runs a "Single Address Capable" claim procedure with a fixed
+    address of 128. Tests a reduced time between start and first message.
+    """
+    feeder.can_messages = [
+        (Feeder.MsgType.CANTX, 0x18EEFF80, [135, 214, 82, 83, 130, 201, 254, 82], 0.0),    # Address Claimed
+    ]
+
+    name = j1939.Name(
+        arbitrary_address_capable=0, 
+        industry_group=j1939.Name.IndustryGroup.Industrial,
+        vehicle_system_instance=2,
+        vehicle_system=127,
+        function=201,
+        function_instance=16,
+        ecu_instance=2,
+        manufacturer_code=666,
+        identity_number=1234567,
+    )
+    new_ca = feeder.ecu.add_ca(name=name, device_address=128)
+    new_ca.start(0.25)
+    
+    # wait until all messages are processed asynchronously 
+    # rounded up to account for scheduling delays
+    time.sleep(0.3)
+
+    # assert that the expected message was sent
+    assert len(feeder.can_messages) == 0
+
 
 def test_addr_claim_fixed_veto_lose(feeder):
     """Test CA Address claim on the bus with fixed address and a veto counterpart

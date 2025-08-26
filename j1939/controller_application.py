@@ -123,14 +123,16 @@ class ControllerApplication:
         """
         self._ecu.remove_timer(callback)
 
-    def start(self):
+    def start(self, claim_delay=0.5):
         """Starts the CA
+        :param claim_delay:
+            The time in seconds to wait before starting the address claim procedure.
         """
         # TODO raise RuntimeError("Can't start CA. Seems to be already running.")? or just ignore?
         # check if we are not already started and there is an ecu connected
         if self._ecu and not self.started:
             self._started = True
-            self._ecu.add_timer(0.500, self._process_claim_async)
+            self._ecu.add_timer(claim_delay, self._process_claim_async)
 
     def stop(self):
         """Stops the CA
