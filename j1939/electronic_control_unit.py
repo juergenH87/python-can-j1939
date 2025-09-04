@@ -266,6 +266,7 @@ class ElectronicControlUnit:
                           is_fd=fd_format,
                           bitrate_switch=fd_format
                           )
+        with self._send_lock:
             try:
                 self._bus.send(msg)
             except can.CanError as e:
