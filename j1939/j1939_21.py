@@ -176,7 +176,7 @@ class J1939_21:
             if buffer_hash in self._snd_buffer:
                 # There is already a sequence active for this pair
                 # put in que
-                self._snd_que[pgn] = {'buffer_hash': buffer_hash,
+                self._snd_que[pgn.value] = {'buffer_hash': buffer_hash,
                                       'pdu_specific': pdu_specific,
                                       'priority': priority,
                                       'src_address':src_address,
