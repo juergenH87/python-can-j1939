@@ -124,48 +124,47 @@ class DM14Server:
         self.length = len(data)
         self.direct = data[1] >> 4
 
-        match self.state:
-            case ResponseState.IDLE:
-                self.pgn = pgn
-                self.sa = sa
-                self.status = j1939.Dm15Status.PROCEED.value
-                self.address = data[2 : (self.length - 2)]
-                self.direct = data[1] >> 4
-                self.command = ((data[1] - 1) & 0x0F) >> 1
-                self.pointer_type = (data[1] >> 4) & 0x1
-                self.object_count = data[0]
-                self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
-                self.data = data
-                if self._key_from_seed is not None:
-                    self.state = ResponseState.WAIT_FOR_KEY
-                    self._pgn = j1939.ParameterGroupNumber.PGN.DM15
-                    self._send_dm15(
-                        self.length,
-                        self.direct,
-                        self.status,
-                        self.state,
-                        self.object_count,
-                        self.sa,
-                    )
-                else:
-                    self.state = ResponseState.SEND_PROCEED
-
-            case ResponseState.WAIT_FOR_KEY:
-                self.length = len(data)
-                self.address = data[2 : (self.length - 2)]
-                self.command = ((data[1] - 1) & 0x0F) >> 1
-                self.object_count = data[0]
-                self.key = (data[self.length - 1] << 8) + data[self.length - 2]
-                self.data = data
+        if self.state == ResponseState.IDLE:
+            self.pgn = pgn
+            self.sa = sa
+            self.status = j1939.Dm15Status.PROCEED.value
+            self.address = data[2: (self.length - 2)]
+            self.direct = data[1] >> 4
+            self.command = ((data[1] - 1) & 0x0F) >> 1
+            self.pointer_type = (data[1] >> 4) & 0x1
+            self.object_count = data[0]
+            self.access_level = (data[self.length - 1] << 8) + data[self.length - 2]
+            self.data = data
+            if self._key_from_seed is not None:
+                self.state = ResponseState.WAIT_FOR_KEY
+                self._pgn = j1939.ParameterGroupNumber.PGN.DM15
+                self._send_dm15(
+                    self.length,
+                    self.direct,
+                    self.status,
+                    self.state,
+                    self.object_count,
+                    self.sa,
+                )
+            else:
                 self.state = ResponseState.SEND_PROCEED
 
-            case ResponseState.WAIT_OPERATION_COMPLETE:
-                self.state = ResponseState.IDLE
-                self.sa = None
-                self._ca.unsubscribe(self.parse_dm14)
+        elif self.state == ResponseState.WAIT_FOR_KEY:
+            self.length = len(data)
+            self.address = data[2: (self.length - 2)]
+            self.command = ((data[1] - 1) & 0x0F) >> 1
+            self.object_count = data[0]
+            self.key = (data[self.length - 1] << 8) + data[self.length - 2]
+            self.data = data
+            self.state = ResponseState.SEND_PROCEED
 
-            case _:
-                raise ValueError("Invalid state")
+        elif self.state == ResponseState.WAIT_OPERATION_COMPLETE:
+            self.state = ResponseState.IDLE
+            self.sa = None
+            self._ca.unsubscribe(self.parse_dm14)
+
+        else:
+            raise ValueError("Invalid state")
 
     def _send_dm15(
         self,
@@ -195,33 +194,33 @@ class DM14Server:
         self._pgn = j1939.ParameterGroupNumber.PGN.DM15
         data = [0xFF] * length
         data[1] = (direct << 4) + (status << 1) + 1
-        match state:
-            case ResponseState.WAIT_FOR_KEY:
-                self.seed = self._seed_generator()
-                data[0] = 0x00
-                data[length - 2] = self.seed & 0xFF
-                data[length - 1] = self.seed >> 8
+        if self.state == ResponseState.WAIT_FOR_KEY:
+            self.seed = self._seed_generator()
+            data[0] = 0x00
+            data[length - 2] = self.seed & 0xFF
+            data[length - 1] = self.seed >> 8
 
-            case ResponseState.SEND_PROCEED:
-                data[0] = object_count
+        elif self.state == ResponseState.SEND_PROCEED:
+            data[0] = object_count
 
-            case ResponseState.SEND_OPERATION_COMPLETE:
-                self.command = j1939.Command.OPERATION_COMPLETED.value
-                data[0] = 0x00
-                data[1] = (direct << 4) + (self.command << 1) + 1
-                self.state = ResponseState.WAIT_OPERATION_COMPLETE
+        elif self.state == ResponseState.SEND_OPERATION_COMPLETE:
+            self.command = j1939.Command.OPERATION_COMPLETED.value
+            data[0] = 0x00
+            data[1] = (direct << 4) + (self.command << 1) + 1
+            self.state = ResponseState.WAIT_OPERATION_COMPLETE
 
-            case ResponseState.SEND_ERROR:
-                status = j1939.Dm15Status.OPERATION_FAILED.value
-                data[0] = 0x00
-                data[1] = (direct << 4) + (status << 1) + 1
-                data[length - 6] = error & 0xFF
-                data[length - 5] = (error >> 8) & 0xFF
-                data[length - 4] = error >> 16
-                data[length - 3] = edcp
+        elif self.state == ResponseState.SEND_ERROR:
+            status = j1939.Dm15Status.OPERATION_FAILED.value
+            data[0] = 0x00
+            data[1] = (direct << 4) + (status << 1) + 1
+            data[length - 6] = error & 0xFF
+            data[length - 5] = (error >> 8) & 0xFF
+            data[length - 4] = error >> 16
+            data[length - 3] = edcp
 
-            case _:
-                raise ValueError("Invalid state")
+        else:
+            raise ValueError("Invalid state")
+
         self._ca.send_pgn(0, (pgn >> 8) & 0xFF, sa & 0xFF, 6, data)
 
     def _send_dm16(self) -> None:
