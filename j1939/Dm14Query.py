@@ -29,11 +29,12 @@ class Dm15Status(Enum):
 
 
 class Dm14Query:
-    def __init__(self, ca: j1939.ControllerApplication) -> None:
+    def __init__(self, ca: j1939.ControllerApplication, user_level=7) -> None:
         """
         performs memory access queries using DM14-DM18 messaging.  Presently only read and write queries are supported
 
         :param obj ca: j1939 controller application
+        :param int user_level: the user level for the request
         """
 
         self._ca = ca
@@ -42,6 +43,7 @@ class Dm14Query:
         self.data_queue = queue.Queue()
         self.mem_data = None
         self.exception_queue = queue.Queue()
+        self.user_level = user_level
 
     def _wait_for_data(self) -> None:
         """
@@ -236,7 +238,7 @@ class Dm14Query:
         self.return_raw_bytes = return_raw_bytes
         self.command = Command.READ
         self._ca.subscribe(self._parse_dm15)
-        self._send_dm14(7)
+        self._send_dm14(self.user_level)
         self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
         raw_bytes = None
@@ -282,7 +284,7 @@ class Dm14Query:
         self.bytes = self._values_to_bytes(values)
         self.object_count = len(values)
         self._ca.subscribe(self._parse_dm15)
-        self._send_dm14(7)
+        self._send_dm14(self.user_level)
         self.state = QueryState.WAIT_FOR_SEED
         # wait for operation completed DM15 message
         try:

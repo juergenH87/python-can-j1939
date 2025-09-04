@@ -44,7 +44,7 @@ class ControllerApplication:
         """
         self._name = name
         self._device_address_preferred = device_address_preferred
-        if bypass_address_claim and device_address_preferred:
+        if bypass_address_claim and (device_address_preferred is not None):
             self._device_address_announced = device_address_preferred
             self._device_address = device_address_preferred
             self._device_address_state = ControllerApplication.State.NORMAL
@@ -123,18 +123,22 @@ class ControllerApplication:
         """
         self._ecu.remove_timer(callback)
 
-    def start(self):
+    def start(self, claim_delay=0.5):
         """Starts the CA
+        :param claim_delay:
+            The time in seconds to wait before starting the address claim procedure.
         """
         # TODO raise RuntimeError("Can't start CA. Seems to be already running.")? or just ignore?
-        if not self.started:
+        # check if we are not already started and there is an ecu connected
+        if self._ecu and not self.started:
             self._started = True
-            self._ecu.add_timer(0.500, self._process_claim_async)
+            self._ecu.add_timer(claim_delay, self._process_claim_async)
 
     def stop(self):
         """Stops the CA
         """
-        if self.started:
+        # check if we are already started and there is an ecu connected
+        if self._ecu and self.started:
             self._started = False
             self._ecu.remove_timer(self._process_claim_async)
 
@@ -188,6 +192,10 @@ class ControllerApplication:
 
             contenders_name = j1939.Name(bytes = data)
 
+            if self._name.value == contenders_name.value:
+                # both have the same name - this could mean that we are the device or there is a duplicate
+                return
+            
             if self._name.value > contenders_name.value:
                 # we have to release our address and claim another one
                 logger.info("We have to release our address '%d' because the contenders name is less than ours", src_address)
