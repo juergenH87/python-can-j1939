@@ -50,6 +50,12 @@ The CAN messages in a SAE J1939 network are called Protocol Data Units (PDUs).
 This definition is not completely correct, but close enough to think of PDUs
 as the CAN messages.
 
+==============================  ===========
+Library Version                 Python
+------------------------------  -----------
+  2.0.13+                         3.9+
+==============================  ===========
+
 
 Features
 --------
