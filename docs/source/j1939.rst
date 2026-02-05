@@ -1,16 +1,13 @@
 j1939 package
 =============
 
-Submodules
-----------
-
-j1939.controller\_application module
-------------------------------------
-
-.. automodule:: j1939.controller_application
+.. automodule:: j1939
     :members:
     :undoc-members:
     :show-inheritance:
+
+Submodules
+----------
 
 j1939.electronic\_control\_unit module
 --------------------------------------
@@ -19,6 +16,70 @@ j1939.electronic\_control\_unit module
     :members:
     :undoc-members:
     :show-inheritance:
+    :special-members: __init__
+
+j1939.controller\_application module
+------------------------------------
+
+.. automodule:: j1939.controller_application
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+
+j1939.j1939\_21 module
+----------------------
+
+.. automodule:: j1939.j1939_21
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+
+j1939.j1939\_22 module
+----------------------
+
+.. automodule:: j1939.j1939_22
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+
+j1939.Dm14Query module
+----------------------
+
+.. automodule:: j1939.Dm14Query
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+
+j1939.Dm14Server module
+-----------------------
+
+.. automodule:: j1939.Dm14Server
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+
+j1939.diagnostic\_messages module
+---------------------------------
+
+.. automodule:: j1939.diagnostic_messages
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
+
+j1939.memory\_access module
+---------------------------
+
+.. automodule:: j1939.memory_access
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
 
 j1939.message\_id module
 ------------------------
@@ -27,6 +88,7 @@ j1939.message\_id module
     :members:
     :undoc-members:
     :show-inheritance:
+    :special-members: __init__
 
 j1939.name module
 -----------------
@@ -35,6 +97,7 @@ j1939.name module
     :members:
     :undoc-members:
     :show-inheritance:
+    :special-members: __init__
 
 j1939.parameter\_group\_number module
 -------------------------------------
@@ -43,20 +106,21 @@ j1939.parameter\_group\_number module
     :members:
     :undoc-members:
     :show-inheritance:
+    :special-members: __init__
+
+j1939.error\_info module
+------------------------
+
+.. automodule:: j1939.error_info
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :special-members: __init__
 
 j1939.version module
 --------------------
 
 .. automodule:: j1939.version
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: j1939
     :members:
     :undoc-members:
     :show-inheritance:

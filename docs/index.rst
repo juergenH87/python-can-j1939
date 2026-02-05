@@ -6,7 +6,9 @@ CAN SAE J1939 for Python
    :caption: Contents:
 
    readme
-   
+   examples
+   source/j1939
+
 
 Indices and tables
 ==================

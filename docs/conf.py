@@ -17,6 +17,10 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../'))
 
+# Mock dependencies to allow autodoc to work without external packages
+# This is needed because python-can requires sqlite3 which may not be available
+autodoc_mock_imports = ['can', 'can.typechecking', 'numpy']
+
 
 # -- Project information -----------------------------------------------------
 
@@ -41,7 +45,39 @@ release = '0.1.0.dev1'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.napoleon',      # Support for Google/NumPy style docstrings
+    'sphinx.ext.viewcode',      # Add links to source code
+    'sphinx.ext.intersphinx',   # Link to other project's documentation
 ]
+
+# Autodoc configuration for comprehensive API documentation
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': True,
+    'show-inheritance': True,
+    'special-members': '__init__',
+    'inherited-members': True,
+    'member-order': 'bysource',
+}
+
+# Include both class docstring and __init__ docstring
+autoclass_content = 'both'
+
+# Napoleon settings for docstring parsing
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_include_init_with_doc = True
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+napoleon_use_param = True
+napoleon_use_rtype = True
+napoleon_type_aliases = None
+
+# Intersphinx mapping
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'can': ('https://python-can.readthedocs.io/en/stable/', None),
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
