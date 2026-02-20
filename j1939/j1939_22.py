@@ -190,7 +190,7 @@ class J1939_22:
     def __put_rts_cts_session(self, session):
         self.__rts_cts_session_list[session] = True
 
-    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format, tos=2, trailer_format=0):
+    def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit, frame_format, tp_connection_mode, tos=2, trailer_format=0):
         pgn = ParameterGroupNumber(data_page, pdu_format, pdu_specific)
         data_length = len(data)
 
