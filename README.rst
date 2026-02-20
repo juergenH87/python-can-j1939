@@ -232,7 +232,7 @@ A more sophisticated example in which the CA class was overloaded to include its
         """Callback for sending messages
 
         This callback is registered at the ECU timer event mechanism to be
-        executed every 500ms.
+        executed every 5s.
 
         :param cookie:
             A cookie registered at 'add_timer'. May be None.
