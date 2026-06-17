@@ -54,7 +54,7 @@ def dm1_before_send():
     :return:
         list of dictionaries of all DTCs included in DM1
 
-    :rtype: list of dic: 'spn', 'fmi', 'oc'
+    :rtype: list of dic: 'spn', 'fmi', 'oc', 'cm'
     """
     lamp_status = {}
     # get lamp status (optional, if status not enter, lamp is switched off)
@@ -65,9 +65,12 @@ def dm1_before_send():
 
     # add all active DTCs
     # if no DTC is active return empty list
+    # 'cm' is the SAE J1939-73 SPN conversion method (1, 2, 3, or 4).
+    # Defaults to 4 (current standard) when omitted.
     dtc_list = []
-    dtc_list.append({'spn': 123, 'fmi': 31})           # occurrence counter is set to 0
-    dtc_list.append({'spn': 456, 'fmi': 1, 'oc': 132}) # with optional occurrence counter
+    dtc_list.append({'spn': 123, 'fmi': 31})                     # CM defaults to 4
+    dtc_list.append({'spn': 456, 'fmi': 1, 'oc': 132})           # with occurrence counter
+    dtc_list.append({'spn': 789, 'fmi': 2, 'oc': 5, 'cm': 3})    # legacy CM 3 layout
 
     return lamp_status, dtc_list
 

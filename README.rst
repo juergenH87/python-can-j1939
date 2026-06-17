@@ -72,7 +72,7 @@ Features
 * correct timeout and deadline handling
 * (under construction) almost complete testcoverage
 * diagnostic messages (see https://github.com/juergenH87/python-can-j1939/tree/master/examples/diagnostic_message.py)
-  - support of DM1 Tool and ECU functionaliy
+  - support of DM1 Tool and ECU functionaliy (all four SAE J1939-73 SPN conversion methods: 1, 2, 3, 4)
   - support of DM11 Tool functionaliy
   - support of DM22 Tool functionaliy
 

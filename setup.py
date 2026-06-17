@@ -27,7 +27,6 @@ setup(
     ],
     install_requires=[
         "python-can >= 3.3.4",
-        "numpy >= 1.17.0",
         "pytest >= 6.2.5",
     ],
     include_package_data=True,

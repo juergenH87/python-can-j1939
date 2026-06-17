@@ -5,23 +5,66 @@ logger = logging.getLogger(__name__)
 
 class DTC:
     """
-    Parser for J1939 DTC (Diagnostic Trouble Code)
+    Parser/encoder for J1939 DTC (Diagnostic Trouble Code).
+
+    Supports the four SAE J1939-73 SPN conversion methods:
+      - CM 1: SPN MSBs in byte 1, mid in byte 2, LSBs+FMI in byte 3, CM bit = 1
+      - CM 2: SPN mid in byte 1, MSBs in byte 2, LSBs+FMI in byte 3, CM bit = 1
+      - CM 3: SPN LSBs/mid/MSBs in bytes 1/2/3 (modern layout), CM bit = 1
+      - CM 4: same byte layout as CM 3, CM bit = 0 (current standard)
+
+    The on-wire CM bit only distinguishes {1,2,3} (bit=1) from {4} (bit=0).
+    CM 1 vs CM 2 vs CM 3 are not separable from the bytes alone; when
+    decoding raw bytes with CM bit = 1, the caller must indicate which one
+    was used (defaults to CM 3 — the most common legacy layout).
     """
-    def __init__(self, dtc=None, spn=None, fmi=None, oc=0):
-        if dtc != None:
+    def __init__(self, dtc=None, spn=None, fmi=None, oc=0, cm=4):
+        if dtc is not None:
+            self._cm = cm
             self._dtc = dtc
-            self._spn = ((dtc & 0xFFFF) | ((dtc >> 5) & 0x70000))
-            self._fmi = ((dtc >> 16) & 0x1F)
-            self._oc  = ((dtc >> 24) & 0x7f)
-            self._cm  = ((dtc >> 31) & 0x01)
-            if self._cm != 0:
-                logger.error("DM01: deprecated spn conversion modes are not supported")
+            self._oc  = ((dtc >> 24) & 0x7F)
+            cm_bit    = ((dtc >> 31) & 0x01)
+            b1 = dtc & 0xFF
+            b2 = (dtc >> 8) & 0xFF
+            b3 = (dtc >> 16) & 0xFF
+            self._fmi = b3 & 0x1F
+            spn_low3 = (b3 >> 5) & 0x07
+            if cm in (3, 4):
+                self._spn = b1 | (b2 << 8) | (spn_low3 << 16)
+            elif cm == 1:
+                # b1 = SPN[18:11], b2 = SPN[10:3], b3[7:5] = SPN[2:0]
+                self._spn = (b1 << 11) | (b2 << 3) | spn_low3
+            elif cm == 2:
+                # b1 = SPN[10:3], b2 = SPN[18:11], b3[7:5] = SPN[2:0]
+                self._spn = (b2 << 11) | (b1 << 3) | spn_low3
+            else:
+                raise ValueError(f"Invalid conversion method: {cm}. Must be 1, 2, 3, or 4.")
+            # Sanity-check the CM bit against the requested method
+            expected_cm_bit = 0 if cm == 4 else 1
+            if cm_bit != expected_cm_bit:
+                logger.warning("DM01: CM bit %d does not match requested conversion method %d", cm_bit, cm)
         else:
-            self._dtc = ((spn & 0xFFFF) | ((spn & 0x70000) << 5) | ((fmi & 0x1F) << 16) | ((oc & 0x7F) << 24))
+            if cm not in (1, 2, 3, 4):
+                raise ValueError(f"Invalid conversion method: {cm}. Must be 1, 2, 3, or 4.")
             self._spn = spn
             self._fmi = fmi
             self._oc = oc
-            self._cm = 0
+            self._cm = cm
+            if cm == 1:
+                b1 = (spn >> 11) & 0xFF
+                b2 = (spn >> 3) & 0xFF
+            elif cm == 2:
+                b1 = (spn >> 3) & 0xFF
+                b2 = (spn >> 11) & 0xFF
+            else:  # cm in (3, 4)
+                b1 = spn & 0xFF
+                b2 = (spn >> 8) & 0xFF
+            b3 = (((spn >> 16) & 0x07) << 5) | (fmi & 0x1F) if cm in (3, 4) \
+                 else ((spn & 0x07) << 5) | (fmi & 0x1F)
+            b4 = oc & 0x7F
+            if cm != 4:
+                b4 |= 0x80
+            self._dtc = b1 | (b2 << 8) | (b3 << 16) | (b4 << 24)
 
     @property
     def spn(self):
@@ -57,7 +100,7 @@ class DTC:
     def cm(self):
         """
         :return:
-            SPN conversion mode
+            SPN conversion method (1, 2, 3, or 4 per SAE J1939-73)
 
         :rtype: int
         """
@@ -127,16 +170,24 @@ class Dm1:
     """
     _msg_subscriber_added = False
 
-    def __init__(self, ca: j1939.ControllerApplication):
+    def __init__(self, ca: j1939.ControllerApplication, rx_cm_bit_set: int = 3):
         """
         :param obj ca: j1939 controller application
+        :param int rx_cm_bit_set:
+            SPN conversion method (1, 2, or 3) to assume when a received DTC
+            has its CM bit set. The on-wire CM bit cannot distinguish CMs 1,
+            2 and 3 — only between {1,2,3} (bit=1) and 4 (bit=0). Defaults to
+            3 (the most common legacy layout). CM 4 is auto-detected.
         """
+        if rx_cm_bit_set not in (1, 2, 3):
+            raise ValueError(f"rx_cm_bit_set must be 1, 2, or 3 (got {rx_cm_bit_set})")
         self._pgn = j1939.ParameterGroupNumber.PGN.DM01
         self._lamp_status = {}
         self._dtc_dic_list = []
         self._data = []
         self._subscribers = []
         self._ca = ca
+        self._rx_cm_bit_set = rx_cm_bit_set
 
     def subscribe(self, callback):
         """Add the given callback to the Dm1 message notification stream.
@@ -230,8 +281,9 @@ class Dm1:
             # optional arguments
             if dtc_dic.get('oc') == None:
                 dtc_dic['oc'] = 0
+            cm = dtc_dic.get('cm', 4)
 
-            dtc = DTC(spn=dtc_dic['spn'], fmi=dtc_dic['fmi'], oc=dtc_dic['oc']).dtc
+            dtc = DTC(spn=dtc_dic['spn'], fmi=dtc_dic['fmi'], oc=dtc_dic['oc'], cm=cm).dtc
             self._data.append(dtc & 0xFF)
             self._data.append((dtc >> 8) & 0xFF)
             self._data.append((dtc >> 16) & 0xFF)
@@ -290,8 +342,9 @@ class Dm1:
                 # so we should not add this to the dtc list since it is not a valid dtc
                 continue
         
-            dtc = DTC(dtc=dtc_int)
-            self._dtc_dic_list.append( {'spn': dtc.spn, 'fmi': dtc.fmi, 'oc': dtc.oc } )
+            cm = 4 if ((dtc_int >> 31) & 0x01) == 0 else self._rx_cm_bit_set
+            dtc = DTC(dtc=dtc_int, cm=cm)
+            self._dtc_dic_list.append( {'spn': dtc.spn, 'fmi': dtc.fmi, 'oc': dtc.oc, 'cm': dtc.cm } )
 
     def _notify_subscribers(self, sa, timestamp):
         for callback in self._subscribers:
