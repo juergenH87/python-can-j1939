@@ -1,5 +1,10 @@
-from enum import Enum
+
+from __future__ import annotations
+
 import queue
+from collections.abc import Callable
+from enum import Enum
+
 import j1939
 
 
@@ -39,11 +44,14 @@ class Dm14Query:
 
         self._ca = ca
         self.state = QueryState.IDLE
-        self._seed_from_key = None
-        self.data_queue = queue.Queue()
+        self._seed_from_key: Callable[[int], int] | None = None
+        self.data_queue: queue.Queue = queue.Queue()
         self.mem_data = None
-        self.exception_queue = queue.Queue()
+        self.exception_queue: queue.Queue = queue.Queue()
         self.user_level = user_level
+        self._dest_address: int | None = None
+        self.address: int | None = None
+        self.command: Command | None = None
 
     def unsubscribe_all(self) -> None:
         """
@@ -101,6 +109,12 @@ class Dm14Query:
 
         :param int key_or_user_level: key or user level
         """
+        if self.address is None:
+            raise RuntimeError("address must be set before sending DM14")
+        if self.command is None:
+            raise RuntimeError("command must be set before sending DM14")
+        if self._dest_address is None:
+            raise RuntimeError("destination address must be set before sending DM14")
         self._pgn = j1939.ParameterGroupNumber.PGN.DM14
         pointer = self.address.to_bytes(length=4, byteorder="little")
         data = []
@@ -120,6 +134,8 @@ class Dm14Query:
         """
         Send DM16 message to device, used to send data to the device
         """
+        if self._dest_address is None:
+            raise RuntimeError("destination address must be set before sending DM16")
         self._pgn = j1939.ParameterGroupNumber.PGN.DM16
         data = []
         byte_count = len(self.bytes)
@@ -207,15 +223,16 @@ class Dm14Query:
         self._ca.subscribe(self._parse_dm15)
         self.state = QueryState.WAIT_FOR_OPER_COMPLETE
 
-    def _values_to_bytes(self, values: list) -> bytearray:
+    def _values_to_bytes(self, values: list) -> list:
         """
-        convert values to bytes for sending to device
+        convert values to a flat list of bytes for sending to device
         :param list values: values to be converted to bytes
+        :return: flat list of ints representing the byte encoding
         """
-        bytes = []
+        result = []
         for val in values:
-            bytes.extend(val.to_bytes(self.object_byte_size, byteorder="little"))
-        return bytes
+            result.extend(val.to_bytes(self.object_byte_size, byteorder="little"))
+        return result
 
     def _bytes_to_values(self, raw_bytes: bytearray) -> list:
         """
@@ -323,9 +340,9 @@ class Dm14Query:
                 raise RuntimeError("No response from server")
             pass  # expect empty queue for write
 
-    def set_seed_key_algorithm(self, algorithm: callable) -> None:
+    def set_seed_key_algorithm(self, algorithm: Callable[[int], int]) -> None:
         """
         set seed-key algorithm to be used for key generation
-        :param callable algorithm: seed-key algorithm
+        :param algorithm: seed-key algorithm
         """
         self._seed_from_key = algorithm

@@ -1,6 +1,6 @@
 import logging
 import time
-import can
+
 import j1939
 
 logging.getLogger('j1939').setLevel(logging.DEBUG)
@@ -20,7 +20,7 @@ def on_message(priority, pgn, sa, timestamp, data):
     :param bytearray data:
         Data of the PDU
     """
-    print("PGN {} length {}".format(hex(pgn), len(data)))
+    print(f"PGN {hex(pgn)} length {len(data)}")
 
 def main():
     print("Initializing")
@@ -31,12 +31,12 @@ def main():
     # Connect to the CAN bus
     # Arguments are passed to python-can's can.interface.Bus() constructor
     # (see https://python-can.readthedocs.io/en/stable/bus.html).
-    # ecu.connect(bustype='socketcan', channel='can0')
-    # ecu.connect(bustype='kvaser', channel=0, bitrate=250000)
-    ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', bitrate=500000)
-    # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
-    # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
-    # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)
+    # ecu.connect(interface='socketcan', channel='can0')
+    # ecu.connect(interface='kvaser', channel=0, bitrate=250000)
+    ecu.connect(interface='pcan', channel='PCAN_USBBUS1', bitrate=500000)
+    # ecu.connect(interface='ixxat', channel=0, bitrate=250000)
+    # ecu.connect(interface='vector', app_name='CANalyzer', channel=0, bitrate=250000)
+    # ecu.connect(interface='nican', channel='CAN0', bitrate=250000)
 
     # subscribe to all global and peer-to-peer messages with destination 0xFA
     ecu.subscribe(on_message, 0xFA)

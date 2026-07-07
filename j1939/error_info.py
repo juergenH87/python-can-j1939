@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class J1939Error(Enum):
     """
     Enum of general errors based off of SAE Mobilus guidelines

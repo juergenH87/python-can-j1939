@@ -1,15 +1,19 @@
+from __future__ import annotations
+
+import heapq
 import logging
+import queue
+import threading
+import time
+
 import can
 from can import Listener
-import time
-import sys
-import threading
-import queue
+
 from .controller_application import ControllerApplication
-from .parameter_group_number import ParameterGroupNumber
 from .j1939_21 import J1939_21
 from .j1939_22 import J1939_22
 from .message_id import FrameFormat
+from .parameter_group_number import ParameterGroupNumber
 
 logger = logging.getLogger(__name__)
 
@@ -35,39 +39,120 @@ class ElectronicControlUnit:
 
         # set data link layer
         if data_link_layer == 'j1939-21':
-            self.j1939_dll = J1939_21(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
+            self.j1939_dll = J1939_21(self.send_message, self._protocol_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
         elif data_link_layer == 'j1939-22':
-            self.j1939_dll = J1939_22(self.send_message, self._job_thread_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
+            self.j1939_dll = J1939_22(self.send_message, self._protocol_wakeup, self._notify_subscribers, max_cmdt_packets, minimum_tp_rts_cts_dt_interval, minimum_tp_bam_dt_interval, self._is_message_acceptable)
         else:
             raise ValueError("either 'j1939-21' or 'j1939-22' must be provided for data link layer")
 
         #: Includes at least MessageListener.
         self._listeners = [MessageListener(self)]
         self._notifier = None
-        self._subscribers = []
 
-        # List of timer events the job thread should care of
+        self._subscribers = []
+        self._subscribers_lock = threading.RLock()
+
+        # Heap-based timer event list: (deadline, seq, callback, cookie, delta_time)
         self._timer_events = []
+        self._timer_seq = 0
+        self._timer_events_lock = threading.RLock()
+
+        # Dependent lifecycle registry.  Any object that needs to be stopped before the ECU's own threads should be registered here. See :meth:`register_dependent`.
+        self._dependents = []
+        self._dependents_lock = threading.RLock()
+        self._stopping = False
 
         self._job_thread_end = threading.Event()
-        logger.info("Starting ECU async thread")
-        self._job_thread_wakeup_queue = queue.Queue()
-        self._job_thread = threading.Thread(target=self._async_job_thread, name='j1939.ecu job_thread')
-        # A thread can be flagged as a "daemon thread". The significance of
-        # this flag is that the entire Python program exits when only daemon
-        # threads are left.
-        self._job_thread.daemon = True
-        self._job_thread.start()
+
+        # Protocol thread: owns TP/BAM timeout management only — no user callbacks
+        logger.info("Starting ECU protocol thread")
+        self._protocol_wakeup_queue = queue.Queue()
+        self._protocol_thread = threading.Thread(
+            target=self._protocol_job_thread, name='j1939.ecu protocol_thread')
+        self._protocol_thread.daemon = True
+
+        # Timer thread: owns application cyclic callbacks only
+        logger.info("Starting ECU timer thread")
+        self._timer_wakeup_queue = queue.Queue()
+        self._timer_thread = threading.Thread(
+            target=self._timer_job_thread, name='j1939.ecu timer_thread')
+        self._timer_thread.daemon = True
+
+        self._protocol_thread.start()
+        self._timer_thread.start()
 
 
     def stop(self):
         """Stops the ECU background handling
 
-        This Function explicitely stops the background handling of the ECU.
+        This Function explicitly stops the background handling of the ECU.
+
+        Before stopping the ECU's own protocol/timer threads, every registered
+        dependent (see :meth:`register_dependent`) has its ``stop()`` method
+        invoked in LIFO order. Exceptions raised by a dependent's ``stop()``
+        are logged and swallowed so a single misbehaving dependent cannot
+        prevent the rest of the shutdown from completing.
         """
+        # Snapshot dependents under lock, then mark the ECU as stopping so any
+        # late registrations are rejected.
+        with self._dependents_lock:
+            self._stopping = True
+            dependents = list(self._dependents)
+            self._dependents.clear()
+
+        # LIFO: most-recently registered first.
+        for dep in reversed(dependents):
+            try:
+                dep.stop()
+            except Exception:
+                logger.exception("Error stopping dependent %r", dep)
+
         self._job_thread_end.set()
-        self._job_thread_wakeup()
-        self._job_thread.join()
+        self._protocol_wakeup_queue.put(1)
+        self._timer_wakeup_queue.put(1)
+        self._protocol_thread.join()
+        self._timer_thread.join()
+
+    def register_dependent(self, dependent):
+        """Register a helper whose ``stop()`` should be called by :meth:`stop`.
+
+        Any helper object that owns threads, timers, or other resources tied
+        to this ECU should call this during construction. ``ecu.stop()`` will
+        invoke ``dependent.stop()`` in LIFO order before tearing down its own
+        threads.
+
+        Duplicate registrations of the same object (by identity) are silently
+        ignored.
+
+        :param dependent:
+            Any object exposing a no-arg ``stop()`` method.
+
+        :raises RuntimeError:
+            If called while the ECU is shutting down.
+        :raises TypeError:
+            If ``dependent`` does not expose a callable ``stop`` attribute.
+        """
+        if not callable(getattr(dependent, 'stop', None)):
+            raise TypeError(
+                "dependent must expose a callable stop() method")
+        with self._dependents_lock:
+            if self._stopping:
+                raise RuntimeError(
+                    "Cannot register a dependent while the ECU is stopping")
+            for existing in self._dependents:
+                if existing is dependent:
+                    return
+            self._dependents.append(dependent)
+
+    def unregister_dependent(self, dependent):
+        """Remove a previously-registered dependent.
+
+        :param dependent:
+            The object previously passed to :meth:`register_dependent`.
+        """
+        with self._dependents_lock:
+            self._dependents = [
+                d for d in self._dependents if d is not dependent]
 
     def add_timer(self, delta_time, callback, cookie=None):
         """Adds a callback to the list of timer events
@@ -77,16 +162,12 @@ class ElectronicControlUnit:
         :param callback:
             The callback function to call
         """
-
-        d = {
-            'delta_time': delta_time,
-            'callback': callback,
-            'deadline': (time.time() + delta_time),
-            'cookie': cookie,
-            }
-
-        self._timer_events.append( d )
-        self._job_thread_wakeup()
+        deadline = time.monotonic() + delta_time
+        with self._timer_events_lock:
+            heapq.heappush(self._timer_events,
+                           (deadline, self._timer_seq, callback, cookie, delta_time))
+            self._timer_seq += 1
+        self._timer_wakeup_queue.put(1)
 
     def remove_timer(self, callback):
         """Removes ALL entries from the timer event list for the given callback
@@ -94,10 +175,10 @@ class ElectronicControlUnit:
         :param callback:
             The callback to be removed from the timer event list
         """
-        for event in self._timer_events:
-            if event['callback'] == callback:
-                self._timer_events.remove( event )
-        self._job_thread_wakeup()
+        with self._timer_events_lock:
+            self._timer_events = [e for e in self._timer_events if e[2] != callback]
+            heapq.heapify(self._timer_events)
+        self._timer_wakeup_queue.put(1)
 
     def connect(self, *args, **kwargs):
         """Connect to CAN bus using python-can.
@@ -107,8 +188,8 @@ class ElectronicControlUnit:
 
         :param channel:
             Backend specific channel for the CAN interface.
-        :param str bustype:
-            Name of the interface. See
+        :param str interface:
+            Name of the interface (formerly ``bustype``, renamed in python-can v4.2). See
             `python-can manual <https://python-can.readthedocs.io/en/latest/configuration.html#interface-names>`__
             for full list of supported interfaces.
         :param int bitrate:
@@ -127,6 +208,10 @@ class ElectronicControlUnit:
 
         Must be overridden in a subclass if a custom interface is used.
         """
+        if self._notifier is None:
+            raise RuntimeError("notifier is not set; call connect() before disconnect()")
+        if self._bus is None:
+            raise RuntimeError("bus is not set; call connect() before disconnect()")
         self._notifier.stop()
         self._bus.shutdown()
         self._bus = None
@@ -142,7 +227,8 @@ class ElectronicControlUnit:
             Only one device address can be entered. Multiple device addresses are only possible with controller applications.
             Note: TP.CMDT will only be received if the destination address is bound to a controller application.
         """
-        self._subscribers.append({'cb': callback, 'dev_adr':device_address})
+        with self._subscribers_lock:
+            self._subscribers.append({'cb': callback, 'dev_adr': device_address})
 
     def unsubscribe(self, callback):
         """Stop listening for message.
@@ -150,9 +236,8 @@ class ElectronicControlUnit:
         :param callback:
             Function to call when message is received.
         """
-        for dic in self._subscribers:
-            if dic['cb'] == callback:
-                self._subscribers.remove(dic)
+        with self._subscribers_lock:
+            self._subscribers = [d for d in self._subscribers if d['cb'] != callback]
 
 
     def add_ca(self, **kwargs):
@@ -213,15 +298,17 @@ class ElectronicControlUnit:
         self._notifier = notifier
         for listener in self._listeners:
             self._notifier.add_listener(listener)
-            
+
     def remove_bus(self):
         """Remove the bus from the ECU.
         """
         self._bus = None
-    
+
     def remove_notifier(self):
         """Remove the notifier from the ECU.
         """
+        if self._notifier is None:
+            return
         for listener in self._listeners:
             self._notifier.remove_listener(listener)
         self._notifier = None
@@ -299,61 +386,73 @@ class ElectronicControlUnit:
             raise RuntimeError("Not connected to CAN bus")
         self._bus.set_filters(filters)
 
-    def _async_job_thread(self):
-        """Asynchronous thread for handling various jobs
+    def _protocol_job_thread(self):
+        """Protocol thread: handles TP/BAM timeout management only.
 
-        This Thread handles various tasks:
-        - Event trigger for associated CAs
-        - Timeout monitoring of communication objects
-
-        To construct a blocking wait with timeout the task waits on a
-        queue-object. When other tasks are adding timer-events they can
-        wakeup the timeout handler to recalculate the new sleep-time
-        to awake at the new events.
+        This thread is isolated from application timer callbacks so that slow
+        user callbacks cannot delay protocol-level timeouts (which would cause
+        spurious ABORT messages on the bus).
         """
-        system = sys.platform
-
         while not self._job_thread_end.is_set():
-
-            now = time.time()
-
+            now = time.monotonic()
             next_wakeup = self.j1939_dll.async_job_thread(now)
-
-            # check timer events
-            for event in self._timer_events:
-                if event['deadline'] > now:
-                    if next_wakeup > event['deadline']:
-                        next_wakeup = event['deadline']
-                else:
-                    # deadline reached
-                    logger.debug("Deadline for event reached")
-                    if event['callback']( event['cookie'] ) == True:
-                        # "true" means the callback wants to be called again
-                        while event['deadline'] < now:
-                            # just to take care of overruns
-                            event['deadline'] += event['delta_time']
-                        # recalc next wakeup
-                        if next_wakeup > event['deadline']:
-                            next_wakeup = event['deadline']
-                    else:
-                        # remove from list
-                        self._timer_events.remove( event )
-
-            time_to_sleep = next_wakeup - time.time()
+            time_to_sleep = next_wakeup - time.monotonic()
             if time_to_sleep > 0:
                 try:
-                    self._job_thread_wakeup_queue.get(True, time_to_sleep)
+                    self._protocol_wakeup_queue.get(True, time_to_sleep)
                 except queue.Empty:
-                    # do nothing
                     pass
 
-    def _job_thread_wakeup(self):
-        """Wakeup the async job thread
+    def _timer_job_thread(self):
+        """Timer thread: handles application cyclic callbacks only.
 
-        By calling this function we wakeup the asyncronous job thread to
-        force a recalculation of his next wakeup event.
+        Uses a heapq (min-heap keyed by deadline) for O(log n) scheduling.
+        Woken early via _timer_wakeup_queue whenever a timer is added/removed.
+        Callbacks returning True are rescheduled; returning False are removed.
         """
-        self._job_thread_wakeup_queue.put(1)
+        while not self._job_thread_end.is_set():
+            now = time.monotonic()
+            next_wakeup = now + 5.0
+
+            with self._timer_events_lock:
+                while self._timer_events and self._timer_events[0][0] <= now:
+                    deadline, seq, cb, cookie, delta = heapq.heappop(self._timer_events)
+                    logger.debug("Deadline for timer event reached")
+                    try:
+                        reschedule = (cb(cookie) is True)
+                    except Exception:
+                        #TODO: is there a better way to handle exceptions in user callbacks?  
+                        # We don't want one bad callback to break the timer thread, 
+                        # but we also don't want to just swallow it silently.
+                        logger.exception("Timer callback failed: %r", cb)
+                        reschedule = False
+                    if reschedule:
+                        # reschedule: advance deadline past now to avoid burst catch-up
+                        new_deadline = deadline + delta
+                        while new_deadline < now:
+                            new_deadline += delta
+                        heapq.heappush(self._timer_events,
+                                       (new_deadline, self._timer_seq, cb, cookie, delta))
+                        self._timer_seq += 1
+                    # returning False (or None) means remove — already popped, nothing to do
+
+                if self._timer_events:
+                    next_wakeup = self._timer_events[0][0]
+
+            time_to_sleep = next_wakeup - time.monotonic()
+            if time_to_sleep > 0:
+                try:
+                    self._timer_wakeup_queue.get(True, time_to_sleep)
+                except queue.Empty:
+                    pass
+
+    def _protocol_wakeup(self):
+        """Wakeup the protocol job thread.
+
+        Called by the DLL (j1939_21/j1939_22) when TP state changes require
+        immediate re-evaluation of protocol deadlines.
+        """
+        self._protocol_wakeup_queue.put(1)
 
     def _notify_subscribers(self, priority, pgn, sa, dest, timestamp, data):
         """Feed incoming message to subscribers.
@@ -371,21 +470,23 @@ class ElectronicControlUnit:
         :param bytearray data:
             Data of the PDU
         """
-        logger.debug("notify subscribers for PGN {}".format(pgn))
-        # notify only the CA for which the message is intended
-        # each CA receives all broadcast messages
-
-        # TODO: this is ineffecient but there exists a possibility of removing subscribers during callback
-        # and adding new ones in while this is going and it can impact message receivement
-        for dic in self._subscribers.copy():
-            if (dic['dev_adr'] == None) or (dest == ParameterGroupNumber.Address.GLOBAL) or (callable(dic['dev_adr']) and dic['dev_adr'](dest)) or (dest == dic['dev_adr']):
+        logger.debug(f"notify subscribers for PGN {pgn}")
+        # Snapshot under lock so subscribe/unsubscribe from any thread is safe.
+        with self._subscribers_lock:
+            snapshot = list(self._subscribers)
+        for dic in snapshot:
+            if (dic['dev_adr'] is None) or (dest == ParameterGroupNumber.Address.GLOBAL) or (callable(dic['dev_adr']) and dic['dev_adr'](dest)) or (dest == dic['dev_adr']):
                 dic['cb'](priority, pgn, sa, timestamp, data)
 
     def _is_message_acceptable(self, dest):
-        for dic in self._subscribers:
-            if dic['dev_adr'] == dest:
-                return True
-        return False
+        # Ownership / active-participation check only: does a subscriber own this
+        # exact destination address (simple peer-to-peer reception)? This gate
+        # decides whether the stack actively engages the directed transport
+        # protocol (RTS/CTS/EOM-ACK). Passive wildcard (``device_address=None``)
+        # and callable subscribers are handled separately by _notify_subscribers()
+        # so a monitor never causes the stack to answer on the bus.
+        with self._subscribers_lock:
+            return any(d['dev_adr'] == dest for d in self._subscribers)
 
 class MessageListener(Listener):
     """Listens for messages on CAN bus and feeds them to an ECU instance.
@@ -399,7 +500,7 @@ class MessageListener(Listener):
         self.stopped = False
 
     def on_message_received(self, msg : can.Message):
-        if self.stopped or msg.is_error_frame or msg.is_remote_frame or (msg.is_extended_id == False):
+        if self.stopped or msg.is_error_frame or msg.is_remote_frame or (not msg.is_extended_id):
             return
 
         try:

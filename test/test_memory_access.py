@@ -1,8 +1,9 @@
-import pytest
-from test_helpers.feeder import Feeder
-from test_helpers.conftest import feeder
-import j1939
 import time
+
+import pytest
+
+import j1939
+from test.helpers.feeder import Feeder
 
 # fmt: off
 read_with_seed_key = [
@@ -523,7 +524,7 @@ def test_dm14_request_write_timeout(feeder):
         assert flag is True, "Timeout waiting for DM14 request"
         reset_flag()
         dm14.respond(True, [], 0xFFFF, 0xFF)
-        assert str(excinfo.value) is "No response received for DM16 data transfer"
+        assert str(excinfo.value) == "No response received for DM16 data transfer"
     feeder.process_messages()
 
 
@@ -629,7 +630,7 @@ def test_dm14_read_timeout_error(feeder):
     Tests that the DM14 read query can react to timeout errors correctly
     :param feeder: can message feeder
     """
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(RuntimeError):
         feeder.can_messages = [
             (
                 Feeder.MsgType.CANTX,
@@ -677,7 +678,7 @@ def test_dm14_write_timeout(feeder):
 
         values = [0x11223344]
         dm14.write(0xD4, 1, 0x91000007, values, object_byte_size=4)
-        assert str(excinfo.value) is "No response from server"
+        assert str(excinfo.value) == "No response from server"
     feeder.process_messages()
 
 

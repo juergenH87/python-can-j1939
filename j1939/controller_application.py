@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 import logging
+
 import j1939
+
 from .message_id import FrameFormat
 
 logger = logging.getLogger(__name__)
@@ -52,10 +56,16 @@ class ControllerApplication:
             self._device_address_announced = j1939.ParameterGroupNumber.Address.NULL
             self._device_address = j1939.ParameterGroupNumber.Address.NULL
             self._device_address_state = ControllerApplication.State.NONE
-        self._ecu = None
+        self._ecu: j1939.ElectronicControlUnit | None = None
         self._subscribers_request = []
         self._subscribers_acknowledge = []
         self._started = False
+
+    @property
+    def _ecu_ref(self) -> j1939.ElectronicControlUnit:
+        if self._ecu is None:
+            raise RuntimeError("CA is not associated with an ECU")
+        return self._ecu
 
     def associate_ecu(self, ecu):
         """Binds this CA to the ECU given
@@ -63,7 +73,6 @@ class ControllerApplication:
             The ECU this CA should be bound to.
             A j1939 :class:`j1939.ElectronicControlUnit` instance
         """
-        self._ecu : j1939.ElectronicControlUnit
         self._ecu = ecu
 
     def remove_ecu(self):
@@ -75,14 +84,14 @@ class ControllerApplication:
         :param callback:
             Function to call when message is received.
         """
-        self._ecu.subscribe(callback, self.message_acceptable)
+        self._ecu_ref.subscribe(callback, self.message_acceptable)
 
     def unsubscribe(self, callback):
         """Stop listening for message.
         :param callback:
             Function to call when message is received.
         """
-        self._ecu.unsubscribe(callback)
+        self._ecu_ref.unsubscribe(callback)
 
     def subscribe_request(self, callback):
         """Add the given callback to the request notification stream.
@@ -114,14 +123,36 @@ class ControllerApplication:
         :param callback:
             The callback function to call
         """
-        self._ecu.add_timer(delta_time, callback, cookie)
+        self._ecu_ref.add_timer(delta_time, callback, cookie)
 
     def remove_timer(self, callback):
         """Removes ALL entries from the timer event list for the given callback
         :param callback:
             The callback to be removed from the timer event list
         """
-        self._ecu.remove_timer(callback)
+        self._ecu_ref.remove_timer(callback)
+
+    def register_dependent(self, dependent):
+        """Register a helper whose ``stop()`` should be called on ECU shutdown.
+
+        Convenience forwarder to :meth:`ElectronicControlUnit.register_dependent`
+        for helpers that only hold a reference to a CA.
+
+        :param dependent:
+            Any object exposing a no-arg ``stop()`` method.
+        """
+        self._ecu_ref.register_dependent(dependent)
+
+    def unregister_dependent(self, dependent):
+        """Remove a previously-registered dependent.
+
+        Convenience forwarder to
+        :meth:`ElectronicControlUnit.unregister_dependent`.
+
+        :param dependent:
+            The object previously passed to :meth:`register_dependent`.
+        """
+        self._ecu_ref.unregister_dependent(dependent)
 
     def start(self, claim_delay=0.5):
         """Starts the CA
@@ -132,7 +163,7 @@ class ControllerApplication:
         # check if we are not already started and there is an ecu connected
         if self._ecu and not self.started:
             self._started = True
-            self._ecu.add_timer(claim_delay, self._process_claim_async)
+            self._ecu_ref.add_timer(claim_delay, self._process_claim_async)
 
     def stop(self):
         """Stops the CA
@@ -140,12 +171,12 @@ class ControllerApplication:
         # check if we are already started and there is an ecu connected
         if self._ecu and self.started:
             self._started = False
-            self._ecu.remove_timer(self._process_claim_async)
+            self._ecu_ref.remove_timer(self._process_claim_async)
 
     def _process_claim_async(self, cookie):
         time_to_sleep = 0.500
         if self._device_address_state == ControllerApplication.State.NONE:
-            if self._device_address_preferred != None:
+            if self._device_address_preferred is not None:
                 self._device_address_announced = self._device_address_preferred
                 self._send_address_claimed(self._device_address_announced)
                 if self._device_address_announced > 127 and self._device_address_announced < 248:
@@ -166,7 +197,7 @@ class ControllerApplication:
             # do nothing
             pass
         # add new event with (possibly) new timeout value
-        self._ecu.add_timer(time_to_sleep, self._process_claim_async)
+        self._ecu_ref.add_timer(time_to_sleep, self._process_claim_async)
         # returning false deletes the event from the list
         return False
 
@@ -202,7 +233,7 @@ class ControllerApplication:
                 # TODO: are there any state variables we have to care about?
                 self._device_address = j1939.ParameterGroupNumber.Address.NULL
                 # TODO: maybe we should call an overloadable function here
-                if self._name.arbitrary_address_capable == False:
+                if not self._name.arbitrary_address_capable:
                     # bad luck
                     logger.error("After releasing our address we are configured to stop operation (CANNOT CLAIM)")
                     self._device_address_state = ControllerApplication.State.CANNOT_CLAIM
@@ -225,6 +256,85 @@ class ControllerApplication:
                 else:
                     # we are in the middle of the claim-process
                     self._send_address_claimed(self._device_address_announced)
+
+    def accepts_commanded_address(self):
+        """Whether this CA honors a Commanded Address (J1939-81).
+
+        Defaults to the NAME's Arbitrary Address Capable bit; override to
+        support other address-configurable device classes that the NAME alone
+        cannot represent (e.g. Command Configurable).
+        """
+        return bool(self._name.arbitrary_address_capable)
+
+    def _process_commanded_address(self, src_address, data, timestamp):
+        """Processes a Commanded Address message (J1939-81, PGN 65240).
+
+        The Commanded Address assigns a specific source address to the device
+        identified by the embedded 64-bit NAME. If the NAME matches ours and we
+        accept the command, run the address-claim procedure at the commanded
+        address.
+
+        :param int src_address:
+            The source address the Commanded Address was sent from.
+        :param bytearray data:
+            The reassembled 9-byte payload (bytes 0-7: NAME, byte 8: new SA).
+        :param float timestamp:
+            The timestamp the message was received in fractions of Epoch-Seconds.
+        """
+        if len(data) < 9:
+            return
+        commanded_name = j1939.Name(bytes=bytes(data[0:8]))
+        new_address = data[8]
+        if commanded_name.value != self._name.value:
+            # not addressed to this CA
+            return
+        if not self.accepts_commanded_address():
+            logger.info("Ignoring Commanded Address for SA '%d': not accepted by policy", new_address)
+            return
+        logger.info("Received Commanded Address: claiming new address '%d'", new_address)
+        self._begin_address_claim(new_address)
+
+    def _begin_address_claim(self, new_address):
+        """Initiate the J1939-81 address-claim procedure at the given address.
+
+        Reuses the existing claim state machine: an Address Claimed message is
+        transmitted immediately at the new source address. Addresses in the
+        128..247 range enter WAIT_VETO (resolved to NORMAL by the
+        :meth:`_process_claim_async` timer, contention by
+        :meth:`_process_addressclaim`); all other addresses claim immediately.
+
+        :param int new_address:
+            The source address to claim. Must be a valid (claimable) source
+            address in the range 0..253; NULL (254) and GLOBAL (255) are
+            rejected.
+
+        :return:
+            True if the claim procedure was started, otherwise False.
+        """
+        # Only 0..253 are valid (claimable) source addresses. NULL (254) and
+        # GLOBAL (255) must never be claimed - doing so would put the CA into an
+        # invalid state.
+        if new_address < 0 or new_address > 253:
+            logger.warning("Ignoring address claim for invalid source address '%d'", new_address)
+            return False
+
+        self._device_address_preferred = new_address
+        self._device_address_announced = new_address
+        self._send_address_claimed(new_address)
+        if new_address > 127 and new_address < 248:
+            self._device_address_state = ControllerApplication.State.WAIT_VETO
+            # Re-arm the veto timeout so the WAIT_VETO -> NORMAL transition
+            # happens after the veto window rather than waiting for the next
+            # periodic claim tick. Only relevant when the periodic claim timer
+            # is already running (i.e. the CA has been started).
+            if self.started:
+                self._ecu_ref.remove_timer(self._process_claim_async)
+                self._ecu_ref.add_timer(ControllerApplication.ClaimTimeout.VETO, self._process_claim_async)
+        else:
+            # addresses from 0..127 and 248..253 claim immediately
+            self._device_address = new_address
+            self._device_address_state = ControllerApplication.State.NORMAL
+        return True
 
     def _process_request(self, mid, dest_address, data, timestamp):
         """Processes a REQUEST message
@@ -259,7 +369,7 @@ class ControllerApplication:
             raise RuntimeError("Could not send message unless address claiming has finished")
 
         mid = j1939.MessageId(priority=priority, parameter_group_number=parameter_group_number, source_address=self._device_address)
-        self._ecu.send_message(mid.can_id, True, data)
+        self._ecu_ref.send_message(mid.can_id, True, data)
 
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, data, time_limit=0, frame_format=FrameFormat.FEFF):
         """send a pgn
@@ -275,7 +385,7 @@ class ControllerApplication:
         if self.state != ControllerApplication.State.NORMAL:
             raise RuntimeError("Could not send message unless address claiming has finished")
 
-        return self._ecu.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data, time_limit, frame_format)
+        return self._ecu_ref.send_pgn(data_page, pdu_format, pdu_specific, priority, self._device_address, data, time_limit, frame_format)
 
     def send_request(self, data_page, pgn, destination):
         """send a request message
@@ -291,7 +401,7 @@ class ControllerApplication:
             source_address = self._device_address
 
         data = [(pgn & 0xFF), ((pgn >> 8) & 0xFF), ((pgn >> 16) & 0xFF)]
-        self._ecu.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, source_address, data)
+        self._ecu_ref.send_pgn(data_page, (j1939.ParameterGroupNumber.PGN.REQUEST >> 8) & 0xFF, destination & 0xFF, 6, source_address, data)
 
     def _send_address_claimed(self, address):
         # TODO: Normally the (initial) address claimed message must not be an auto repeat message.
@@ -300,7 +410,7 @@ class ControllerApplication:
         pgn = j1939.ParameterGroupNumber(0, 238, j1939.ParameterGroupNumber.Address.GLOBAL)
         mid = j1939.MessageId(priority=6, parameter_group_number=pgn.value, source_address=address)
         data = self._name.bytes
-        self._ecu.send_message(mid.can_id, True, data)
+        self._ecu_ref.send_message(mid.can_id, True, data)
 
     def on_request(self, src_address, dest_address, pgn):
         """Callback for PGN requests

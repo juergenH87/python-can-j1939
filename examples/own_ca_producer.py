@@ -1,6 +1,6 @@
 import logging
 import time
-import can
+
 import j1939
 
 logging.getLogger('j1939').setLevel(logging.DEBUG)
@@ -37,7 +37,7 @@ def ca_receive(priority, pgn, source, timestamp, data):
     :param bytearray data:
         Data of the PDU
     """
-    print("PGN {} length {}".format(pgn, len(data)))
+    print(f"PGN {pgn} length {len(data)}")
 
 def ca_timer_callback1(cookie):
     """Callback for sending messages
@@ -101,13 +101,13 @@ def main():
     # Connect to the CAN bus
     # Arguments are passed to python-can's can.interface.Bus() constructor
     # (see https://python-can.readthedocs.io/en/stable/bus.html).
-    # ecu.connect(bustype='socketcan', channel='can0')
-    # ecu.connect(bustype='kvaser', channel=0, bitrate=250000)
-    ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', bitrate=250000)
-    # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
-    # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
-    # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)    
-    # ecu.connect('testchannel_1', bustype='virtual')
+    # ecu.connect(interface='socketcan', channel='can0')
+    # ecu.connect(interface='kvaser', channel=0, bitrate=250000)
+    ecu.connect(interface='pcan', channel='PCAN_USBBUS1', bitrate=250000)
+    # ecu.connect(interface='ixxat', channel=0, bitrate=250000)
+    # ecu.connect(interface='vector', app_name='CANalyzer', channel=0, bitrate=250000)
+    # ecu.connect(interface='nican', channel='CAN0', bitrate=250000)    
+    # ecu.connect('testchannel_1', interface='virtual')
 
     # add CA to the ECU
     ecu.add_ca(controller_application=ca)

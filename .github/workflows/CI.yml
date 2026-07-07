@@ -1,46 +1,79 @@
-# This is a basic workflow to help you get started with Actions
-
 name: CI
 
-# Controls when the workflow will run
+permissions:
+  contents: read
+
 on:
   push:
     branches:
       - master
       - develop
-    tags:
-      - v*
   pull_request:
     branches:
       - "**"
   schedule:
-    # Daily at 10:55
-    - cron: '55 10 * * *'
-
-  # Allows you to run this workflow manually from the Actions tab
+    - cron: '55 10 * * 0'
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "test"
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.10'
+          cache: 'pip' # Safely caches dependencies
+
+      - name: Install dependencies
+        run: pip install -e .[lint]
+
+      - name: Check style and syntax (Ruff)
+        run: ruff check .
+
+      - name: Check minimum Python version compatibility (Vermin)
+        run: vermin --target=3.10- --no-parse-comments --no-tips j1939/
+
+      - name: Run Pyright
+        run: pyright
+
   test:
-    # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
         with:
-          python-version: '3.10'
-          
-      - uses: actions/checkout@v2
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
       - name: install dependencies
-        run: pip3 install .
+        run: pip3 install -e .[test]
 
       - name: Run tests
         run: pytest . --pyargs
 
+  build_check:
+    name: Verify Package Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Verify package build and metadata
+        run: |
+          python -m build
+          python -m twine check dist/*

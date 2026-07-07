@@ -1,5 +1,6 @@
 import j1939
 
+
 class ParameterGroupNumber:
     """Parameter Group Number (PGN).
 
@@ -33,7 +34,7 @@ class ParameterGroupNumber:
         ADDRESSCLAIM        = 60928  # EE00
         DATATRANSFER        = 60160  # EB00
         TP_CM               = 60416  # EC00
-        #COMMANDED_ADDRESS  = 65240
+        COMMANDED_ADDRESS   = 65240  # FED8
         #PROPRIETARY_A      = 61184
         #SOFTWARE_IDENT     = 65242
         # Diagnostic messages

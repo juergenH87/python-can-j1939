@@ -1,6 +1,6 @@
 import logging
 import time
-import can
+
 import j1939
 
 logging.getLogger('j1939').setLevel(logging.DEBUG)
@@ -54,7 +54,7 @@ def dm1_before_send():
     :return:
         list of dictionaries of all DTCs included in DM1
 
-    :rtype: list of dic: 'spn', 'fmi', 'oc'
+    :rtype: list of dic: 'spn', 'fmi', 'oc', 'cm'
     """
     lamp_status = {}
     # get lamp status (optional, if status not enter, lamp is switched off)
@@ -65,9 +65,12 @@ def dm1_before_send():
 
     # add all active DTCs
     # if no DTC is active return empty list
+    # 'cm' is the SAE J1939-73 SPN conversion method (1, 2, 3, or 4).
+    # Defaults to 4 (current standard) when omitted.
     dtc_list = []
-    dtc_list.append({'spn': 123, 'fmi': 31})           # occurrence counter is set to 0
-    dtc_list.append({'spn': 456, 'fmi': 1, 'oc': 132}) # with optional occurrence counter
+    dtc_list.append({'spn': 123, 'fmi': 31})                     # CM defaults to 4
+    dtc_list.append({'spn': 456, 'fmi': 1, 'oc': 132})           # with occurrence counter
+    dtc_list.append({'spn': 789, 'fmi': 2, 'oc': 5, 'cm': 3})    # legacy CM 3 layout
 
     return lamp_status, dtc_list
 
@@ -81,12 +84,12 @@ def main():
     # Connect to the CAN bus
     # Arguments are passed to python-can's can.interface.Bus() constructor
     # (see https://python-can.readthedocs.io/en/stable/bus.html).
-    # ecu.connect(bustype='socketcan', channel='can0')
-    # ecu.connect(bustype='kvaser', channel=0, bitrate=250000)
-    ecu.connect(bustype='pcan', channel='PCAN_USBBUS1', bitrate=250000)
-    # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
-    # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
-    # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)   
+    # ecu.connect(interface='socketcan', channel='can0')
+    # ecu.connect(interface='kvaser', channel=0, bitrate=250000)
+    ecu.connect(interface='pcan', channel='PCAN_USBBUS1', bitrate=250000)
+    # ecu.connect(interface='ixxat', channel=0, bitrate=250000)
+    # ecu.connect(interface='vector', app_name='CANalyzer', channel=0, bitrate=250000)
+    # ecu.connect(interface='nican', channel='CAN0', bitrate=250000)   
 
     # subscribe to all (global) messages on the bus
     ecu.subscribe(on_message)

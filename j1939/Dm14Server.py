@@ -1,6 +1,11 @@
-from enum import Enum
+
+from __future__ import annotations
+
 import queue
 import secrets
+from collections.abc import Callable
+from enum import Enum
+
 import j1939
 
 
@@ -24,16 +29,16 @@ class DM14Server:
 
         self._ca = ca
         self._busy = False
-        self.sa = None
+        self.sa: int | None = None
         self.state = ResponseState.IDLE
-        self._key_from_seed = None
-        self.data_queue = queue.Queue()
-        self._seed_generator = self.generate_seed
-        self._verify_key = None
-        self.address = None
+        self._key_from_seed: Callable[[int], int] | None = None
+        self.data_queue: queue.Queue = queue.Queue()
+        self._seed_generator: Callable[[], int] = self.generate_seed
+        self._verify_key: Callable[..., bool] | None = None
+        self.address: bytearray | None = None
         self.length = 8
         self.proceed = False
-        self.data = []
+        self.data: bytearray | list = []
         self.error = 0x00
         self.edcp = 0x07
         self.status = j1939.Dm15Status.PROCEED.value
@@ -44,6 +49,8 @@ class DM14Server:
         Determines whether to send data or wait to receive data based on the command type.
         If the command is a read command, then the data requested is sent.
         """
+        if self.sa is None:
+            raise RuntimeError("sa must be set before waiting for data")
         self._ca.subscribe(self._parse_dm16)
         self._send_dm15(
             self.length,
@@ -146,7 +153,7 @@ class DM14Server:
                         self.status,
                         self.state,
                         self.object_count,
-                        self.sa,
+                        sa,
                     )
                 else:
                     self.state = ResponseState.SEND_PROCEED
@@ -175,9 +182,10 @@ class DM14Server:
         state: ResponseState,
         object_count: int,
         sa: int,
-        pgn: int = j1939.ParameterGroupNumber.PGN.DM15,
-        error: int = None,
-        edcp: int = None,
+        pgn: int = 55296, # FIXME: we should use constants, like we used to: j1939.ParameterGroupNumber.PGN.DM15, but we get into circular imports errors. https://github.com/RaulSMS/python-can-j1939/issues/24
+        error: int | None = None,
+        edcp: int | None = None,
+
     ) -> None:
         """
         Send DM15 message to device, used to send the proceed message,
@@ -212,6 +220,10 @@ class DM14Server:
                 self.state = ResponseState.WAIT_OPERATION_COMPLETE
 
             case ResponseState.SEND_ERROR:
+                if error is None:
+                    raise RuntimeError("error must be provided for SEND_ERROR state")
+                if edcp is None:
+                    raise RuntimeError("edcp must be provided for SEND_ERROR state")
                 status = j1939.Dm15Status.OPERATION_FAILED.value
                 data[0] = 0x00
                 data[1] = (direct << 4) + (status << 1) + 1
@@ -229,11 +241,13 @@ class DM14Server:
         """
         Send DM16 message to device, used to send requested data
         """
+        if self.sa is None:
+            raise RuntimeError("sa must be set before sending DM16")
         self._pgn = j1939.ParameterGroupNumber.PGN.DM16
         data = []
         byte_count = len(self.data)
         data.append(0xFF if byte_count > 7 else byte_count)
-        for i in range((byte_count)):
+        for i in range(byte_count):
             data.append(self.data[i])
 
         data.extend([0xFF] * (self.length - byte_count - 1))
@@ -268,7 +282,7 @@ class DM14Server:
             self.status,
             self.state,
             self.object_count,
-            self.sa,
+            sa,
         )
 
     def bytes_to_int(self, data: bytearray) -> int:
@@ -294,24 +308,24 @@ class DM14Server:
             seed = 0xBEEF
         return seed
 
-    def set_seed_key_algorithm(self, algorithm: callable) -> None:
+    def set_seed_key_algorithm(self, algorithm: Callable[[int], int]) -> None:
         """
         Set seed key algorithm to be used for key generation
-        :param callable algorithm: seed-key algorithm
+        :param algorithm: seed-key algorithm
         """
         self._key_from_seed = algorithm
 
-    def set_seed_generator(self, algorithm: callable) -> None:
+    def set_seed_generator(self, algorithm: Callable[[], int]) -> None:
         """
         Sets seed generation algorithm to be used for generating a seed value
-        :param callable algorithm: seed generation algorithm
+        :param algorithm: seed generation algorithm
         """
         self._seed_generator = algorithm
 
-    def set_verify_key(self, algorithm: callable) -> None:
+    def set_verify_key(self, algorithm: Callable[..., bool]) -> None:
         """
         Set key verification algorithm to be used for key verification
-        :param callable algorithm: key verification algorithm
+        :param algorithm: key verification algorithm
         """
         self._verify_key = algorithm
 
@@ -325,9 +339,13 @@ class DM14Server:
             # TODO: add ability to dynamically pass arguments to verification function if needed,
             # if this is breaking can just add **kwargs to function defintion used to set the verification function
             # this will allow for the reception of additional arguments if needed
+            if self.address is None:
+                raise RuntimeError("address must be set before verifying key")
             return self._verify_key(
                 seed=seed, key=key, address=self.bytes_to_int(self.address), sa=self.sa
             )
+        if self._key_from_seed is None:
+            raise RuntimeError("no key-from-seed algorithm set; call set_seed_key_algorithm first")
         return self._key_from_seed(seed) == key
 
     def unsubscribe_all(self) -> None:
@@ -364,7 +382,7 @@ class DM14Server:
         error: int = 0xFFFFFF,
         edcp: int = 0xFF,
         max_timeout: int = 3,
-    ) -> list:
+    ) -> list | None:
         """
         Respond to DM14 query with the requested data or confimation of operation is good to proceed
         :param bool proceed: whether the operation is good to proceed
@@ -389,7 +407,7 @@ class DM14Server:
         else:
             self.state = ResponseState.SEND_ERROR
         self._wait_for_data()
-        mem_data = None
+        mem_data: list | None = None
         if self.state == ResponseState.WAIT_FOR_DM16:
             try:
                 mem_data = self.data_queue.get(block=True, timeout=max_timeout)

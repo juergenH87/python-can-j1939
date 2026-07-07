@@ -63,6 +63,9 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/examples.rst
+docs/source/j1939.rst
+docs/source/modules.rst
 
 # PyBuilder
 target/

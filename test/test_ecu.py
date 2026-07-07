@@ -1,34 +1,7 @@
-import time
 
 import can
-import j1939
-from test_helpers.feeder import Feeder
-from test_helpers.conftest import feeder
 
-
-def receive(feeder):
-    feeder.ecu.subscribe(on_message)
-    feeder.inject_messages_into_ecu()
-    # wait until all messages are processed asynchronously
-    while len(pdus)>0:
-        time.sleep(0.500)
-    # wait for final processing    
-    time.sleep(0.100)
-    feeder.ecu.unsubscribe(on_message)
-
-
-def send(feeder, pdu, source, destination):
-    feeder.ecu.subscribe(on_message)
-
-    # sending from 240 to 155 with prio 6
-    feeder.ecu.send_pgn(0, pdu[1]>>8, destination, 6, source, pdu[2])
-    
-    # wait until all messages are processed asynchronously
-    while len(feeder.can_messages)>0:
-        time.sleep(0.500)
-    # wait for final processing    
-    time.sleep(0.100)
-    feeder.ecu.unsubscribe(on_message)
+from test.helpers.feeder import Feeder
 
 #def test_connect(self):
 #    self.feeder.ecu.connect(bustype="virtual", channel=1)
@@ -174,7 +147,7 @@ def test_add_bus(feeder):
     feeder.ecu.add_bus(bus)
     assert feeder.ecu._bus == bus
     feeder.ecu.remove_bus()
-    assert feeder.ecu._bus == None
+    assert feeder.ecu._bus is None
 
 def test_add_notfier(feeder):
     """
@@ -186,7 +159,7 @@ def test_add_notfier(feeder):
     feeder.ecu.add_notifier(notifier)
     assert feeder.ecu._notifier == notifier
     feeder.ecu.remove_notifier()
-    assert feeder.ecu._notifier == None
+    assert feeder.ecu._notifier is None
 
 def test_add_bus_filters(feeder):
     """

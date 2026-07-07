@@ -1,0 +1,8 @@
+{
+  "include": ["j1939"],
+  "exclude": ["test", "examples", "docs"],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false
+}
