@@ -405,6 +405,16 @@ class ElectronicControlUnit:
         """
         self._notifier = notifier
         for listener in self._listeners:
+            # A listener may have been permanently marked stopped by a
+            # previous can.Notifier.stop() call (e.g. a notifier shared with
+            # other consumers via a ref-counted registry, torn down and
+            # recreated while this ECU itself stayed alive). This ECU's
+            # listeners are created once in __init__ and reused for its
+            # whole lifetime, so re-adding to a (possibly new) notifier must
+            # also clear that flag -- otherwise on_message_received() keeps
+            # silently dropping every frame even though the listener is
+            # registered on a live notifier.
+            listener.stopped = False
             self._notifier.add_listener(listener)
 
     def remove_bus(self):
