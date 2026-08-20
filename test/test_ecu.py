@@ -1,8 +1,11 @@
 import time
 
 import can
+import pytest
 
 import j1939
+from j1939.j1939_21 import J1939_21
+from j1939.message_id import MessageId
 from test.helpers.feeder import Feeder
 
 # def test_connect(self):
@@ -56,6 +59,98 @@ def test_broadcast_receive_long(feeder):
     ]
 
     feeder.receive()
+
+
+def test_broadcast_receive_out_of_sequence_packet_raises():
+    """Reject and terminate a BAM session with an invalid sequence number."""
+    sent = []
+    notified = []
+    dll = J1939_21(
+        send_message=lambda *args: sent.append(args),
+        job_thread_wakeup=lambda: None,
+        notify_subscribers=lambda *args: notified.append(args),
+        max_cmdt_packets=1,
+        minimum_tp_rts_cts_dt_interval=None,
+        minimum_tp_bam_dt_interval=None,
+        ecu_is_message_acceptable=lambda dest: True,
+    )
+    bam_mid = MessageId(can_id=0x00ECFF01)
+    dll._process_tp_cm(bam_mid, 0xFF, [32, 20, 0, 3, 255, 0xB0, 0xFE, 0], 0.0)
+    buffer_hash = dll._buffer_hash(0x01, 0xFF)
+    mid = MessageId(can_id=0x00EBFF01)
+
+    with pytest.raises(ValueError, match='out of sequence'):
+        dll._process_tp_dt(mid, 0xFF, [2, 8, 9, 10, 11, 12, 13, 14], 0.0)
+
+    assert sent == []
+    assert notified == []
+    assert buffer_hash not in dll._rcv_buffer
+
+
+def test_peer_to_peer_receive_out_of_sequence_packet_aborts(feeder):
+    """Reject an out-of-sequence CMDT packet and abort the session."""
+    sent = []
+    dll = J1939_21(
+        send_message=lambda *args: sent.append(args),
+        job_thread_wakeup=lambda: None,
+        notify_subscribers=lambda *args: None,
+        max_cmdt_packets=1,
+        minimum_tp_rts_cts_dt_interval=None,
+        minimum_tp_bam_dt_interval=None,
+        ecu_is_message_acceptable=lambda dest: True,
+    )
+    rts_mid = MessageId(can_id=0x00EC0201)
+    dll._process_tp_cm(rts_mid, 0x02, [16, 20, 0, 3, 1, 0, 223, 0], 0.0)
+    sent.clear()
+
+    dt_mid = MessageId(can_id=0x00EB0201)
+    with pytest.raises(ValueError, match='out of sequence'):
+        dll._process_tp_dt(dt_mid, 0x02, [2, 1, 2, 3, 4, 5, 6, 7], 0.0)
+
+    assert sent == [
+        (
+            0x1CEC0102,
+            True,
+            [255, 7, 255, 255, 255, 0, 223, 0],
+        )
+    ]
+    assert not dll._rcv_buffer
+
+    dll._process_tp_cm(rts_mid, 0x02, [16, 20, 0, 3, 1, 0, 223, 0], 0.0)
+    sent.clear()
+
+    with pytest.raises(ValueError, match='out of sequence'):
+        dll._process_tp_dt(dt_mid, 0x02, [0, 1, 2, 3, 4, 5, 6, 7], 0.0)
+
+    assert sent[0][2][1] == 7
+
+
+def test_peer_to_peer_sequence_gap_after_valid_packet_aborts(feeder):
+    """Reject a sequence gap without delivering a partial RTS/CTS payload."""
+    sent = []
+    notified = []
+    dll = J1939_21(
+        send_message=lambda *args: sent.append(args),
+        job_thread_wakeup=lambda: None,
+        notify_subscribers=lambda *args: notified.append(args),
+        max_cmdt_packets=2,
+        minimum_tp_rts_cts_dt_interval=None,
+        minimum_tp_bam_dt_interval=None,
+        ecu_is_message_acceptable=lambda dest: True,
+    )
+    rts_mid = MessageId(can_id=0x00EC0201)
+    dll._process_tp_cm(rts_mid, 0x02, [16, 20, 0, 3, 2, 0, 223, 0], 0.0)
+    sent.clear()
+
+    dt_mid = MessageId(can_id=0x00EB0201)
+    dll._process_tp_dt(dt_mid, 0x02, [1, 1, 2, 3, 4, 5, 6, 7], 0.0)
+
+    with pytest.raises(ValueError, match='out of sequence'):
+        dll._process_tp_dt(dt_mid, 0x02, [3, 8, 9, 10, 11, 12, 13, 14], 0.0)
+
+    assert sent[0][2][1] == 7
+    assert notified == []
+    assert not dll._rcv_buffer
 
 
 def test_peer_to_peer_receive_short(feeder):

@@ -21,6 +21,8 @@ class J1939_21:
         TIMEOUT = 3     # A timeout occured
         # 4..250 Reserved by SAE
         CTS_WHILE_DT = 4  # according AUTOSAR: CTS messages received when data transfer is in progress
+        BAD_SEQUENCE = 7
+        DUPLICATE_SEQUENCE = 8
         # 251..255 Per J1939/71 definitions - but there are none?
 
     class Timeout:
@@ -314,6 +316,7 @@ class J1939_21:
                         'pgn': pgn,
                         'message_size': message_size,
                         'num_packages': num_packages,
+                        'next_expected_packet': 1,
                         'next_packet': min(self._max_cmdt_packets, max_num_packages),
                         'max_cmdt_packages': self._max_cmdt_packets,
                         'num_packages_max_rec': min(self._max_cmdt_packets, max_num_packages),
@@ -379,6 +382,7 @@ class J1939_21:
                         "pgn": pgn,
                         "message_size": message_size,
                         "num_packages": num_packages,
+                        "next_expected_packet": 1,
                         "next_packet": 1,
                         "max_cmdt_packages": self._max_cmdt_packets,
                         "data": [],
@@ -410,8 +414,30 @@ class J1939_21:
                 # TODO: LOG/TRACE/EXCEPTION?
                 return
 
+            expected_sequence_number = self._rcv_buffer[buffer_hash]['next_expected_packet']
+            if sequence_number != expected_sequence_number:
+                abort_reason = (
+                    self.ConnectionAbortReason.DUPLICATE_SEQUENCE
+                    if 0 < sequence_number < expected_sequence_number
+                    else self.ConnectionAbortReason.BAD_SEQUENCE
+                )
+                if dest_address != ParameterGroupNumber.Address.GLOBAL:
+                    self.__send_tp_abort(
+                        dest_address,
+                        src_address,
+                        abort_reason,
+                        self._rcv_buffer[buffer_hash]['pgn'],
+                    )
+                del self._rcv_buffer[buffer_hash]
+                self.__job_thread_wakeup()
+                raise ValueError(
+                    "J1939-21 TP.DT packet out of sequence: "
+                    f"expected {expected_sequence_number}, received {sequence_number}"
+                )
+
             # get data
             self._rcv_buffer[buffer_hash]['data'].extend(data[1:])
+            self._rcv_buffer[buffer_hash]['next_expected_packet'] += 1
 
             # message is complete with sending an acknowledge
             if len(self._rcv_buffer[buffer_hash]['data']) >= self._rcv_buffer[buffer_hash]['message_size']:
@@ -564,4 +590,3 @@ class J1939_21:
             # stack having to own the destination address.
             self.__notify_subscribers(mid.priority, pgn_value, mid.source_address, dest_address, timestamp, data)
             return
-
