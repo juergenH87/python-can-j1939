@@ -103,9 +103,10 @@ class ControllerApplication:
         self._subscribers_acknowledge.append(callback)
 
     def unsubscribe_acknowledge(self, callback):
-        """Remove the given callback from the request notification stream.
+        """Remove the given callback from the acknowledge notification stream.
         :param callback: Function to call when an acknowledge is received.
         """
+        self._subscribers_acknowledge.remove(callback)
 
     def add_timer(self, delta_time, callback, cookie=None):
         """Adds a callback to the list of timer events
