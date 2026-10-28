@@ -303,7 +303,14 @@ class ControllerApplication:
         self._ecu.send_message(mid.can_id, True, data)
 
     def on_request(self, src_address, dest_address, pgn):
-        """Callback for PGN requests
+        """Optional handler for PGN requests.
+
+        Overriding this method alone does not subscribe it to requests.
+        Register an overridden handler with ``ca.subscribe_request(ca.on_request)``
+        and remove it with ``ca.unsubscribe_request(ca.on_request)`` when it is no
+        longer needed. Requests handled internally, such as requests for the
+        Address Claimed PGN, are not forwarded to request subscribers.
+
         :param int src_address:
             The address the request comes from
         :param int dest_address:
