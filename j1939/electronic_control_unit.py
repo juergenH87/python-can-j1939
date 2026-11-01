@@ -44,6 +44,7 @@ class ElectronicControlUnit:
         #: Includes at least MessageListener.
         self._listeners = [MessageListener(self)]
         self._notifier = None
+        self._notifier_stopped = False
         self._subscribers = []
 
         # List of timer events the job thread should care of
@@ -120,16 +121,22 @@ class ElectronicControlUnit:
         self._bus = can.interface.Bus(*args, **kwargs)
         logger.info("Connected to '%s'", self._bus.channel_info)
         self._notifier = can.Notifier(self._bus, self._listeners, 1)
+        self._notifier_stopped = False
         return self._bus
 
     def disconnect(self):
         """Disconnect from the CAN bus.
 
+        This method can be called repeatedly during cleanup.
         Must be overridden in a subclass if a custom interface is used.
         """
-        self._notifier.stop()
-        self._bus.shutdown()
-        self._bus = None
+        if self._notifier is not None and not self._notifier_stopped:
+            self._notifier.stop()
+            # Retain the notifier so remove_notifier() can still detach listeners.
+            self._notifier_stopped = True
+        if self._bus is not None:
+            self._bus.shutdown()
+            self._bus = None
 
     def subscribe(self, callback, device_address=None):
         """Add the given callback to the message notification stream.
@@ -211,6 +218,7 @@ class ElectronicControlUnit:
             A :class:`can.Notifier` object.
         """
         self._notifier = notifier
+        self._notifier_stopped = False
         for listener in self._listeners:
             self._notifier.add_listener(listener)
             
@@ -225,6 +233,7 @@ class ElectronicControlUnit:
         for listener in self._listeners:
             self._notifier.remove_listener(listener)
         self._notifier = None
+        self._notifier_stopped = False
 
     def send_pgn(self, data_page, pdu_format, pdu_specific, priority, src_address, data, time_limit=0, frame_format=FrameFormat.FEFF):
         """send a pgn

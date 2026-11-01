@@ -1,7 +1,9 @@
 import time
+from unittest.mock import Mock
 
 import can
 import j1939
+import pytest
 from test_helpers.feeder import Feeder
 from test_helpers.conftest import feeder
 
@@ -33,6 +35,106 @@ def send(feeder, pdu, source, destination):
 #def test_connect(self):
 #    self.feeder.ecu.connect(bustype="virtual", channel=1)
 #    self.feeder.ecu.disconnect()
+
+
+def test_disconnect_is_idempotent(feeder):
+    bus = Mock()
+    notifier = Mock()
+    feeder.ecu.add_bus(bus)
+    feeder.ecu.add_notifier(notifier)
+
+    feeder.ecu.disconnect()
+    feeder.ecu.disconnect()
+
+    notifier.stop.assert_called_once_with()
+    bus.shutdown.assert_called_once_with()
+    assert feeder.ecu._notifier is notifier
+    assert feeder.ecu._bus is None
+
+
+def test_disconnect_without_connection(feeder):
+    feeder.ecu.disconnect()
+    feeder.ecu.disconnect()
+    assert feeder.ecu._notifier is None
+    assert feeder.ecu._bus is None
+
+
+def test_disconnect_with_partial_connection(feeder):
+    bus = Mock()
+    feeder.ecu.add_bus(bus)
+    feeder.ecu.disconnect()
+    feeder.ecu.disconnect()
+    bus.shutdown.assert_called_once_with()
+
+    notifier = Mock()
+    feeder.ecu.add_notifier(notifier)
+    feeder.ecu.disconnect()
+    feeder.ecu.disconnect()
+    notifier.stop.assert_called_once_with()
+
+
+def test_disconnect_preserves_notifier_removal(feeder):
+    bus = can.interface.Bus(interface="virtual")
+    notifier = can.Notifier(bus, [], timeout=0.01)
+    feeder.ecu.add_bus(bus)
+    feeder.ecu.add_notifier(notifier)
+
+    try:
+        feeder.ecu.disconnect()
+        assert all(listener in notifier.listeners for listener in feeder.ecu._listeners)
+
+        feeder.ecu.remove_notifier()
+        assert all(listener not in notifier.listeners for listener in feeder.ecu._listeners)
+        assert feeder.ecu._notifier is None
+    finally:
+        notifier.stop()
+        bus.shutdown()
+
+
+@pytest.mark.parametrize("failed_resource", ["notifier", "bus"])
+def test_disconnect_retries_failed_cleanup(feeder, failed_resource):
+    bus = Mock()
+    notifier = Mock()
+    feeder.ecu.add_bus(bus)
+    feeder.ecu.add_notifier(notifier)
+    error = RuntimeError("cleanup failed")
+    cleanup = notifier.stop if failed_resource == "notifier" else bus.shutdown
+    cleanup.side_effect = [error, None]
+
+    with pytest.raises(RuntimeError) as raised:
+        feeder.ecu.disconnect()
+    assert raised.value is error
+    assert feeder.ecu._bus is bus
+    if failed_resource == "notifier":
+        bus.shutdown.assert_not_called()
+
+    feeder.ecu.disconnect()
+    feeder.ecu.disconnect()
+
+    assert notifier.stop.call_count == (2 if failed_resource == "notifier" else 1)
+    assert bus.shutdown.call_count == (2 if failed_resource == "bus" else 1)
+    assert feeder.ecu._bus is None
+
+
+@pytest.mark.parametrize("attach", ["connect", "add"])
+def test_disconnect_after_reconnection(feeder, monkeypatch, attach):
+    for _ in range(2):
+        bus = Mock()
+        notifier = Mock()
+        if attach == "connect":
+            monkeypatch.setattr(can.interface, "Bus", Mock(return_value=bus))
+            monkeypatch.setattr(can, "Notifier", Mock(return_value=notifier))
+            assert feeder.ecu.connect() is bus
+        else:
+            feeder.ecu.add_bus(bus)
+            feeder.ecu.add_notifier(notifier)
+
+        feeder.ecu.disconnect()
+        feeder.ecu.disconnect()
+
+        notifier.stop.assert_called_once_with()
+        bus.shutdown.assert_called_once_with()
+
 
 def test_broadcast_receive_short(feeder):
     """Test the receivement of a normal broadcast message
