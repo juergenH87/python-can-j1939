@@ -188,14 +188,14 @@ class ControllerApplication:
             or (self._device_address_state == ControllerApplication.State.WAIT_VETO and src_address == self._device_address_announced)
             ):
 
-            logger.info("Received ADDRESS CLAIMED message with conflicting address '%d'", src_address)
-
             contenders_name = j1939.Name(bytes = data)
 
             if self._name.value == contenders_name.value:
                 # both have the same name - this could mean that we are the device or there is a duplicate
                 return
             
+            logger.info("Received ADDRESS CLAIMED message with conflicting address '%d'", src_address)
+
             if self._name.value > contenders_name.value:
                 # we have to release our address and claim another one
                 logger.info("We have to release our address '%d' because the contenders name is less than ours", src_address)
