@@ -61,6 +61,10 @@ Features
 
   - Connection Mode Data Transfers (CMDT)
   - Broadcast Announce Message (BAM)
+* support of the extended transport protocol (1786 up to 117440505 bytes) according ISO 11783-3 for sending and receiving
+
+  - destination specific only; ``send_pgn`` picks it for any destination specific message longer than 1785 bytes
+  - packets requested per CTS when receiving set by ``max_etp_cmdt_packets`` (default 16)
 * support of Multi-PG according SAE J1939/22
   - currently FEFF (Flexible Data Rate Extended Frame Format) supported only
 * full support of fd-transport protocol according SAE J1939/22 (J1939-FD) for sending and receiving

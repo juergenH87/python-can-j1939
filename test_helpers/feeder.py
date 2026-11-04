@@ -38,14 +38,18 @@ class Feeder:
         CANTX = 1
         PDU = 2
 
-    def __init__(self):
+    def __init__(self, **ecu_kwargs):
         self.STOP_THREAD = object()
+        # Assertions fail on the ECU's and the feeder's threads, where pytest
+        # would only warn; they are recorded here and raised by check()
+        self.failures = []
 
         self.message_queue = queue.Queue()
         self.message_thread = threading.Thread(target=self._async_can_feeder)
         self.message_thread.start()
         # redirect the send_message from the can bus to our simulation
-        self.ecu = j1939.ElectronicControlUnit(send_message=self._send_message)
+        ecu_kwargs.setdefault('send_message', self._send_message)
+        self.ecu = j1939.ElectronicControlUnit(**ecu_kwargs)
 
     def _async_can_feeder(self):
         """Asynchronous feeder"""
@@ -72,10 +76,12 @@ class Feeder:
         logger.info(
             f'send message ID: {can_id:04x}, data:   {["{:02x}".format(val) for val in data]}'
         )
-        expected_data = self.can_messages.pop(0)
-        assert expected_data[0] == Feeder.MsgType.CANTX
-        assert can_id == expected_data[1]
-        assert data == expected_data[2]
+        with self._recording():
+            assert self.can_messages, f'unexpected message ID {can_id:08x} data {list(data)}'
+            expected_data = self.can_messages.pop(0)
+            assert expected_data[0] == Feeder.MsgType.CANTX, f'sent ID {can_id:08x} data {list(data)} where {expected_data} was expected'
+            assert can_id == expected_data[1], f'sent ID {can_id:08x} where {expected_data[1]:08x} was expected'
+            assert list(data) == list(expected_data[2]), f'sent {list(data)} where {expected_data[2]} was expected'
         self._inject_messages_into_ecu()
 
     def _on_message(self, priority, pgn, sa, timestamp, data):
@@ -95,13 +101,36 @@ class Feeder:
         logger.info(
             f'received from sa {sa:02x} pgn {pgn:04x} data: {["{:02x}".format(val) for val in data]}'
         )
-        expected_data = self.pdus.pop(0)
-        assert expected_data[0] == Feeder.MsgType.PDU
-        assert pgn == expected_data[1]
-        if isinstance(data, list):
-            assert data == expected_data[2]
-        else:
-            assert data is None
+        with self._recording():
+            assert self.pdus, f'unexpected PDU pgn {pgn:04x}'
+            expected_data = self.pdus.pop(0)
+            assert expected_data[0] == Feeder.MsgType.PDU
+            assert pgn == expected_data[1], f'received PGN {pgn:04x} where {expected_data[1]:04x} was expected'
+            assert list(data) == list(expected_data[2]), f'received {list(data)} where {expected_data[2]} was expected'
+
+    class _Recording:
+        def __init__(self, feeder):
+            self.feeder = feeder
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            if exc_type is AssertionError:
+                self.feeder.failures.append(exc)
+                # nothing more will match: let the waiting test return
+                self.feeder.can_messages = []
+                self.feeder.pdus = []
+                return True
+            return False
+
+    def _recording(self):
+        return Feeder._Recording(self)
+
+    def check(self):
+        """Raise the first assertion that failed on a background thread."""
+        if self.failures:
+            raise self.failures[0]
 
     def pdus_from_messages(self):
         self.pdus = []
@@ -129,6 +158,7 @@ class Feeder:
         # wait for final processing
         time.sleep(0.100)
         self.ecu.unsubscribe(self._on_message)
+        self.check()
 
     def send(self, pdu, source, destination):
         self.ecu.subscribe(self._on_message)
@@ -142,6 +172,7 @@ class Feeder:
         # wait for final processing
         time.sleep(0.100)
         self.ecu.unsubscribe(self._on_message)
+        self.check()
 
     def stop(self):
         self.ecu.stop()

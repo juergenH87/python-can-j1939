@@ -1,9 +1,19 @@
 import time
 
 import can
+import pytest
 import j1939
+from j1939.iso11783_etp import ISO11783_ETP
 from test_helpers.feeder import Feeder
 from test_helpers.conftest import feeder
+
+
+@pytest.fixture()
+def etp_feeder():
+    """Feeder requesting 255 ETP packets per CTS so ETP tests don't need 256+ CTS rounds."""
+    f = Feeder(max_etp_cmdt_packets=255)
+    yield f
+    f.stop()
 
 
 def receive(feeder):
@@ -143,7 +153,8 @@ def test_peer_to_peer_send_long(feeder):
         (Feeder.MsgType.CANRX, 0x1CEC909B, [19, 20, 0, 3, 255, 0, 223, 0], 0.0),        # TP.CM EOMACK
     ]
 
-    feeder.pdus = [(Feeder.MsgType.PDU, 57088, None)]
+    # the EOM_ACK reaches subscribers as its CM frame, under the transferred PGN
+    feeder.pdus = [(Feeder.MsgType.PDU, 57088, [19, 20, 0, 3, 255, 0, 223, 0])]
 
     pdu = (Feeder.MsgType.PDU, 57088, [1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6])
 
@@ -200,6 +211,260 @@ def test_add_bus_filters(feeder):
     ]
     feeder.ecu.add_bus_filters(filters)
     assert feeder.ecu._bus.filters == filters
+
+def _etp_pgn_bytes(pgn):
+    return [pgn & 0xFF, (pgn >> 8) & 0xFF, (pgn >> 16) & 0xFF]
+
+
+def _etp_size_bytes(size):
+    return [size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF, (size >> 24) & 0xFF]
+
+
+def _etp_offset_bytes(value):
+    return [value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF]
+
+
+def test_peer_to_peer_receive_etp(etp_feeder):
+    """ISO 11783-3 ETP receive: a destination-specific message > 1785 bytes.
+
+    1786 bytes = 256 ETP.DT packets (last packet carries 1 data byte + 6 pad bytes).
+    With max_cmdt_packets=255 the receiver requests 255 packets in the first
+    burst and 1 in the second.
+    """
+    feeder = etp_feeder
+    feeder.accept_all_messages()
+
+    src = 0x01
+    dst = 0x02
+    pgn = 0xDF00  # PDU1 destination-specific PGN (PF=223)
+    message_size = 1786
+    num_packets = (message_size + 6) // 7  # 256
+    payload = [(i & 0xFF) for i in range(message_size)]
+
+    cm_id_rx = 0x00C80000 | (dst << 8) | src       # peer -> us
+    cm_id_tx = 0x1CC80000 | (src << 8) | dst       # us  -> peer (priority 7)
+    dt_id_rx = 0x00C70000 | (dst << 8) | src       # peer -> us
+
+    messages = []
+    messages.append((Feeder.MsgType.CANRX, cm_id_rx,
+                     [20] + _etp_size_bytes(message_size) + _etp_pgn_bytes(pgn), 0.0))
+    messages.append((Feeder.MsgType.CANTX, cm_id_tx,
+                     [21, 255] + _etp_offset_bytes(1) + _etp_pgn_bytes(pgn), 0.0))
+    messages.append((Feeder.MsgType.CANRX, cm_id_rx,
+                     [22, 255] + _etp_offset_bytes(0) + _etp_pgn_bytes(pgn), 0.0))
+    for seq in range(1, 256):
+        chunk = payload[(seq - 1) * 7:seq * 7]
+        messages.append((Feeder.MsgType.CANRX, dt_id_rx, [seq] + chunk, 0.0))
+    # Burst 2: request 1 more packet
+    messages.append((Feeder.MsgType.CANTX, cm_id_tx,
+                     [21, 1] + _etp_offset_bytes(256) + _etp_pgn_bytes(pgn), 0.0))
+    messages.append((Feeder.MsgType.CANRX, cm_id_rx,
+                     [22, 1] + _etp_offset_bytes(255) + _etp_pgn_bytes(pgn), 0.0))
+    last = payload[(num_packets - 1) * 7:]
+    last += [0xFF] * (7 - len(last))
+    messages.append((Feeder.MsgType.CANRX, dt_id_rx, [1] + last, 0.0))
+    # Final EOMA from us
+    messages.append((Feeder.MsgType.CANTX, cm_id_tx,
+                     [23] + _etp_size_bytes(message_size) + _etp_pgn_bytes(pgn), 0.0))
+
+    feeder.can_messages = messages
+    feeder.pdus = [(Feeder.MsgType.PDU, pgn, payload)]
+    feeder.receive()
+
+
+def test_peer_to_peer_send_etp(etp_feeder):
+    """ISO 11783-3 ETP send: a destination-specific message > 1785 bytes."""
+    feeder = etp_feeder
+    feeder.accept_all_messages()
+
+    src = 0x90
+    dst = 0x9B
+    pgn = 0xDF00  # PDU1 destination-specific PGN (PF=223)
+    message_size = 1786
+    num_packets = (message_size + 6) // 7  # 256
+    payload = [(i & 0xFF) for i in range(message_size)]
+
+    cm_id_tx_p7 = 0x1CC80000 | (dst << 8) | src   # us -> peer (priority 7)
+    cm_id_rx_p7 = 0x1CC80000 | (src << 8) | dst
+    dt_id_tx = 0x1CC70000 | (dst << 8) | src   # us -> peer (priority 7)
+
+    messages = []
+    # ETP.CM is always sent at priority 7, whatever the caller's priority
+    messages.append((Feeder.MsgType.CANTX, cm_id_tx_p7,
+                     [20] + _etp_size_bytes(message_size) + _etp_pgn_bytes(pgn), 0.0))
+    # Peer responds with CTS for the full first burst
+    messages.append((Feeder.MsgType.CANRX, cm_id_rx_p7,
+                     [21, 255] + _etp_offset_bytes(1) + _etp_pgn_bytes(pgn), 0.0))
+    # We answer with DPO then 255 DTs
+    messages.append((Feeder.MsgType.CANTX, cm_id_tx_p7,
+                     [22, 255] + _etp_offset_bytes(0) + _etp_pgn_bytes(pgn), 0.0))
+    for seq in range(1, 256):
+        chunk = payload[(seq - 1) * 7:seq * 7]
+        messages.append((Feeder.MsgType.CANTX, dt_id_tx, [seq] + chunk, 0.0))
+    # Peer requests the final packet
+    messages.append((Feeder.MsgType.CANRX, cm_id_rx_p7,
+                     [21, 1] + _etp_offset_bytes(256) + _etp_pgn_bytes(pgn), 0.0))
+    messages.append((Feeder.MsgType.CANTX, cm_id_tx_p7,
+                     [22, 1] + _etp_offset_bytes(255) + _etp_pgn_bytes(pgn), 0.0))
+    last = payload[(num_packets - 1) * 7:]
+    last += [0xFF] * (7 - len(last))
+    messages.append((Feeder.MsgType.CANTX, dt_id_tx, [1] + last, 0.0))
+    # Peer's EOMA closes the session
+    messages.append((Feeder.MsgType.CANRX, cm_id_rx_p7,
+                     [23] + _etp_size_bytes(message_size) + _etp_pgn_bytes(pgn), 0.0))
+
+    feeder.can_messages = messages
+    # the EOM_ACK reaches subscribers as its CM frame, under the transferred PGN
+    feeder.pdus = [(Feeder.MsgType.PDU, pgn, [23] + _etp_size_bytes(message_size) + _etp_pgn_bytes(pgn))]
+
+    pdu = (Feeder.MsgType.PDU, pgn, payload)
+    feeder.send(pdu, src, dst)
+
+
+def _etp_abort_payload(reason, pgn):
+    return [255, reason, 0xFF, 0xFF, 0xFF] + _etp_pgn_bytes(pgn)
+
+
+def _drive_until_drained(feeder, timeout=3.0):
+    feeder.ecu.subscribe(feeder._on_message)
+    feeder._inject_messages_into_ecu()
+    deadline = time.time() + timeout
+    while feeder.can_messages and time.time() < deadline:
+        time.sleep(0.05)
+    feeder.ecu.unsubscribe(feeder._on_message)
+    feeder.check()
+    assert not feeder.can_messages, f"expected messages not consumed: {feeder.can_messages}"
+
+
+def test_etp_receive_rts_size_too_large(etp_feeder):
+    """RTS with size > MAX_MESSAGE_SIZE must be aborted with ANY_OTHER_REASON."""
+    feeder = etp_feeder
+    feeder.accept_all_messages()
+    src, dst = 0x01, 0x02
+    pgn = 0xDF00
+    bad_size = ISO11783_ETP.MAX_MESSAGE_SIZE + 1
+    cm_id_rx = 0x00C80000 | (dst << 8) | src
+    cm_id_tx = 0x1CC80000 | (src << 8) | dst
+
+    feeder.can_messages = [
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [20] + _etp_size_bytes(bad_size) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         _etp_abort_payload(ISO11783_ETP.AbortReason.ANY_OTHER_REASON, pgn), 0.0),
+    ]
+    feeder.pdus = []
+    _drive_until_drained(feeder)
+
+
+def test_etp_receive_repeated_rts_restarts(etp_feeder):
+    """A second RTS for the same PGN replaces the open connection: it is
+    answered with a fresh CTS from packet 1, not an abort."""
+    feeder = etp_feeder
+    feeder.accept_all_messages()
+    src, dst = 0x01, 0x02
+    pgn = 0xDF00
+    size = 2000
+    burst = min(255, (size + 6) // 7)
+    cm_id_rx = 0x00C80000 | (dst << 8) | src
+    cm_id_tx = 0x1CC80000 | (src << 8) | dst
+
+    feeder.can_messages = [
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [20] + _etp_size_bytes(size) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         [21, burst] + _etp_offset_bytes(1) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [20] + _etp_size_bytes(size) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         [21, burst] + _etp_offset_bytes(1) + _etp_pgn_bytes(pgn), 0.0),
+    ]
+    feeder.pdus = []
+    _drive_until_drained(feeder)
+
+
+def test_etp_receive_rts_for_other_pgn_aborts_busy(etp_feeder):
+    """An RTS for another PGN while an ETP session is active must yield a
+    BUSY abort, and leave the open connection alone."""
+    feeder = etp_feeder
+    feeder.accept_all_messages()
+    src, dst = 0x01, 0x02
+    pgn = 0xDF00
+    other_pgn = 0xDE00
+    size = 2000
+    burst = min(255, (size + 6) // 7)
+    cm_id_rx = 0x00C80000 | (dst << 8) | src
+    cm_id_tx = 0x1CC80000 | (src << 8) | dst
+
+    feeder.can_messages = [
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [20] + _etp_size_bytes(size) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         [21, burst] + _etp_offset_bytes(1) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [20] + _etp_size_bytes(size) + _etp_pgn_bytes(other_pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         _etp_abort_payload(ISO11783_ETP.AbortReason.BUSY, other_pgn), 0.0),
+    ]
+    feeder.pdus = []
+    _drive_until_drained(feeder)
+    assert feeder.ecu.j1939_dll.etp.has_receive_session(src, dst)
+
+
+def test_etp_receive_dpo_offset_mismatch(etp_feeder):
+    """DPO with offset != expected must be aborted with BAD_DPO_OFFSET."""
+    feeder = etp_feeder
+    feeder.accept_all_messages()
+    src, dst = 0x01, 0x02
+    pgn = 0xDF00
+    size = 2000
+    burst = min(255, (size + 6) // 7)
+    cm_id_rx = 0x00C80000 | (dst << 8) | src
+    cm_id_tx = 0x1CC80000 | (src << 8) | dst
+
+    feeder.can_messages = [
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [20] + _etp_size_bytes(size) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         [21, burst] + _etp_offset_bytes(1) + _etp_pgn_bytes(pgn), 0.0),
+        # Expected DPO offset is 0; send 99 instead.
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [22, burst] + _etp_offset_bytes(99) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         _etp_abort_payload(ISO11783_ETP.AbortReason.BAD_DPO_OFFSET, pgn), 0.0),
+    ]
+    feeder.pdus = []
+    _drive_until_drained(feeder)
+
+
+def test_etp_receive_dt_bad_sequence(etp_feeder):
+    """DT with non-monotonic sequence number must be aborted with BAD_SEQUENCE."""
+    feeder = etp_feeder
+    feeder.accept_all_messages()
+    src, dst = 0x01, 0x02
+    pgn = 0xDF00
+    size = 2000
+    burst = min(255, (size + 6) // 7)
+    cm_id_rx = 0x00C80000 | (dst << 8) | src
+    cm_id_tx = 0x1CC80000 | (src << 8) | dst
+    dt_id_rx = 0x00C70000 | (dst << 8) | src
+    payload = [(i & 0xFF) for i in range(size)]
+
+    feeder.can_messages = [
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [20] + _etp_size_bytes(size) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         [21, burst] + _etp_offset_bytes(1) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANRX, cm_id_rx,
+         [22, burst] + _etp_offset_bytes(0) + _etp_pgn_bytes(pgn), 0.0),
+        (Feeder.MsgType.CANRX, dt_id_rx, [1] + payload[0:7], 0.0),
+        # Skip seq 2 to trigger BAD_SEQUENCE
+        (Feeder.MsgType.CANRX, dt_id_rx, [3] + payload[7:14], 0.0),
+        (Feeder.MsgType.CANTX, cm_id_tx,
+         _etp_abort_payload(ISO11783_ETP.AbortReason.BAD_SEQUENCE, pgn), 0.0),
+    ]
+    feeder.pdus = []
+    _drive_until_drained(feeder)
+
 
 def test_subscribe(feeder):
     """

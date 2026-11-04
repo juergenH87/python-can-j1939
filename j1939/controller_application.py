@@ -200,6 +200,11 @@ class ControllerApplication:
                 # we have to release our address and claim another one
                 logger.info("We have to release our address '%d' because the contenders name is less than ours", src_address)
                 # TODO: are there any state variables we have to care about?
+                if self._device_address_state == ControllerApplication.State.NORMAL and self._ecu is not None:
+                    # transport sessions on the released address cannot continue
+                    drop_sessions = getattr(self._ecu.j1939_dll, 'drop_sessions', None)
+                    if drop_sessions is not None:
+                        drop_sessions(self._device_address)
                 self._device_address = j1939.ParameterGroupNumber.Address.NULL
                 # TODO: maybe we should call an overloadable function here
                 if self._name.arbitrary_address_capable == False:

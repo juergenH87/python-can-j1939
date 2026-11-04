@@ -33,6 +33,9 @@ class ParameterGroupNumber:
         ADDRESSCLAIM        = 60928  # EE00
         DATATRANSFER        = 60160  # EB00
         TP_CM               = 60416  # EC00
+        # ISO 11783-3 Extended Transport Protocol
+        ETP_DT              = 50944  # C700
+        ETP_CM              = 51200  # C800
         #COMMANDED_ADDRESS  = 65240
         #PROPRIETARY_A      = 61184
         #SOFTWARE_IDENT     = 65242
