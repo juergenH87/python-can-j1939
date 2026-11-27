@@ -25,6 +25,7 @@ At the time of writing the supported interfaces are
 * CAN over Serial
 * CAN over Serial / SLCAN
 * CANalyst-II
+* CANsub (CSS Electronics)
 * IXXAT Virtual CAN Interface
 * Kvasers CANLIB
 * NEOVI Interface
@@ -144,6 +145,7 @@ To simply receive all passing (public) messages on the bus you can subscribe to 
         # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
         # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
         # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)
+        # ecu.connect(bustype='cansub', channel='aabbccdd-usb.local@1', bitrate=250000)
 
         # subscribe to all (global) messages on the bus
         ecu.subscribe(on_message)
@@ -269,6 +271,7 @@ A more sophisticated example in which the CA class was overloaded to include its
         # ecu.connect(bustype='ixxat', channel=0, bitrate=250000)
         # ecu.connect(bustype='vector', app_name='CANalyzer', channel=0, bitrate=250000)
         # ecu.connect(bustype='nican', channel='CAN0', bitrate=250000)
+        # ecu.connect(bustype='cansub', channel='aabbccdd-usb.local@1', bitrate=250000)
         # ecu.connect('testchannel_1', bustype='virtual')
 
         # add CA to the ECU
